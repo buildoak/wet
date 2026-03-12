@@ -360,8 +360,8 @@ func (s *Server) handleMessagesWithCompression(w http.ResponseWriter, r *http.Re
 
 	usage := forward(forwardBody)
 
-	if isMain && store != nil && result.Compressed > 0 && len(result.Items) > 0 {
-		turnItems := make([]persist.TurnItem, 0, len(result.Items))
+	if isMain && store != nil {
+		var turnItems []persist.TurnItem
 		totalCharsSaved := 0
 		for _, item := range result.Items {
 			charsSaved := item.OriginalChars - item.TombstoneChars
@@ -376,6 +376,9 @@ func (s *Server) handleMessagesWithCompression(w http.ResponseWriter, r *http.Re
 				Tombstone:  item.Tombstone,
 				Preview:    item.Preview,
 			})
+		}
+		if turnItems == nil {
+			turnItems = []persist.TurnItem{}
 		}
 		totalContext := usage.InputTokens + usage.CacheReadInputTokens + usage.CacheCreationInputTokens
 		tokensSavedEst := int(float64(totalCharsSaved) / 3.3)
