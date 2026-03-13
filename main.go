@@ -26,6 +26,8 @@ const usageText = `Usage:
   wet statusline           # one-liner for Claude Code status bar
   wet install-statusline   # add wet statusline to Claude Code settings
   wet uninstall-statusline # remove wet statusline from Claude Code settings
+  wet install-skill [--dir PATH] # install wet-compress skill to Claude Code
+  wet uninstall-skill [--dir PATH] # remove wet-compress skill
   wet session salt         # generate a random session salt
   wet session find <SALT>  # find session JSONL by salt
   wet session profile --jsonl <PATH> [--port PORT]  # context composition
@@ -89,6 +91,10 @@ func main() {
 		err = cli.RunInstallStatusline()
 	case "uninstall-statusline":
 		err = cli.RunUninstallStatusline()
+	case "install-skill":
+		err = cli.RunInstallSkill(args[1:])
+	case "uninstall-skill":
+		err = cli.RunUninstallSkill(args[1:])
 	case "rules":
 		err = runRulesCommand(args[1:])
 	case "session":
