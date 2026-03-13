@@ -256,5 +256,5 @@ func ExtractToolFamily(toolName, command string) string {
 }
 
 func EstimateTokens(s string) int {
-	return len(s) / 4
+	return len(s) * 10 / 33
 }

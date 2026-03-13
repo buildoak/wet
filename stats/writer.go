@@ -15,29 +15,31 @@ import (
 
 // SessionStats tracks cumulative stats for the current proxy session.
 type SessionStats struct {
-	mu                   sync.Mutex
-	Port                 int // proxy port, used for per-instance stats file
-	Mode                 string
-	StartTime            time.Time
-	RequestCount         int
-	TotalToolResults     int
-	TotalCompressed      int
-	TotalSkippedFresh    int
-	TotalSkippedBypass   int
-	TokensBefore         int64
-	TokensAfter          int64
-	Tier1Count           int
-	Tier2Count           int
-	Tier2Failures        int
-	APIInputTokens       int64
-	APIOutputTokens      int64
-	APICacheCreate       int64
-	APICacheRead         int64
+	mu                        sync.Mutex
+	Port                      int // proxy port, used for per-instance stats file
+	Mode                      string
+	StartTime                 time.Time
+	RequestCount              int
+	TotalToolResults          int
+	TotalCompressed           int
+	TotalSkippedFresh         int
+	TotalSkippedBypass        int
+	TokensBefore              int64
+	TokensAfter               int64
+	Tier1Count                int
+	Tier2Count                int
+	Tier2Failures             int
+	APIInputTokens            int64
+	APIOutputTokens           int64
+	APICacheCreate            int64
+	APICacheRead              int64
 	ContextWindow             int    // detected context window size (e.g. 200000)
 	LatestAPIInputTokens      int    // most recent single-request uncached input token count
 	LatestAPITotalInputTokens int    // most recent single-request total (input + cache_create + cache_read)
+	PrevTotalContext          int    // total_context from the previous turn (for delta calculation)
+	APITokensSaved            int64  // cumulative API-observed savings (delta when compression fires)
 	Model                     string // detected model name from request
-	LastRequest          *RequestStats
+	LastRequest               *RequestStats
 }
 
 // RequestStats is written to ~/.wet/stats-{port}.json after each request.
@@ -59,17 +61,18 @@ type RequestStats struct {
 	APICacheReadInputTokens     int     `json:"api_cache_read_input_tokens,omitempty"`
 
 	// Session-level cumulative fields (for statusline)
-	SessionTokensSaved       int64   `json:"session_tokens_saved"`
-	SessionRequests          int     `json:"session_requests"`
-	SessionItemsTotal        int     `json:"session_items_total"`
-	SessionItemsComp         int     `json:"session_items_compressed"`
-	SessionCompRatio         float64 `json:"session_compression_ratio"`
-	SessionMode              string  `json:"session_mode"`
-	ContextWindow            int     `json:"context_window,omitempty"`
-	LatestInputTokens        int     `json:"latest_input_tokens,omitempty"`
-	LatestTotalInputTokens   int     `json:"latest_total_input_tokens,omitempty"`
-	SessionTokensBefore      int64   `json:"session_tokens_before,omitempty"`
-	SessionTokensAfter       int64   `json:"session_tokens_after,omitempty"`
+	SessionTokensSaved     int64   `json:"session_tokens_saved"`
+	SessionRequests        int     `json:"session_requests"`
+	SessionItemsTotal      int     `json:"session_items_total"`
+	SessionItemsComp       int     `json:"session_items_compressed"`
+	SessionCompRatio       float64 `json:"session_compression_ratio"`
+	SessionMode            string  `json:"session_mode"`
+	ContextWindow          int     `json:"context_window,omitempty"`
+	LatestInputTokens      int     `json:"latest_input_tokens,omitempty"`
+	LatestTotalInputTokens int     `json:"latest_total_input_tokens,omitempty"`
+	SessionTokensBefore    int64   `json:"session_tokens_before,omitempty"`
+	SessionTokensAfter     int64   `json:"session_tokens_after,omitempty"`
+	SessionAPITokensSaved  int64   `json:"session_api_tokens_saved,omitempty"`
 }
 
 // HealthResponse for GET /health.
@@ -118,25 +121,26 @@ func (s *SessionStats) RecordRequest(result pipeline.CompressResult) {
 	}
 
 	s.LastRequest = &RequestStats{
-		Timestamp:           time.Now().UTC().Format(time.RFC3339),
-		ToolResults:         result.TotalToolResults,
-		Compressed:          result.Compressed,
-		SkippedFresh:        result.SkippedFresh,
-		SkippedBypass:       result.SkippedBypass,
-		TokensBefore:        result.TokensBefore,
-		TokensAfter:         result.TokensAfter,
-		CompressionRatio:    ratio,
-		OverheadMs:          result.OverheadMs,
-		SessionTokensSaved:  s.TokensBefore - s.TokensAfter,
-		SessionRequests:     s.RequestCount,
-		SessionItemsTotal:   s.TotalToolResults,
-		SessionItemsComp:    s.TotalCompressed,
-		SessionCompRatio:    sessionRatio,
-		SessionMode:         mode,
-		ContextWindow:       s.ContextWindow,
-		LatestInputTokens:   s.LatestAPIInputTokens,
-		SessionTokensBefore: s.TokensBefore,
-		SessionTokensAfter:  s.TokensAfter,
+		Timestamp:             time.Now().UTC().Format(time.RFC3339),
+		ToolResults:           result.TotalToolResults,
+		Compressed:            result.Compressed,
+		SkippedFresh:          result.SkippedFresh,
+		SkippedBypass:         result.SkippedBypass,
+		TokensBefore:          result.TokensBefore,
+		TokensAfter:           result.TokensAfter,
+		CompressionRatio:      ratio,
+		OverheadMs:            result.OverheadMs,
+		SessionTokensSaved:    s.TokensBefore - s.TokensAfter,
+		SessionRequests:       s.RequestCount,
+		SessionItemsTotal:     s.TotalToolResults,
+		SessionItemsComp:      s.TotalCompressed,
+		SessionCompRatio:      sessionRatio,
+		SessionMode:           mode,
+		ContextWindow:         s.ContextWindow,
+		LatestInputTokens:     s.LatestAPIInputTokens,
+		SessionTokensBefore:   s.TokensBefore,
+		SessionTokensAfter:    s.TokensAfter,
+		SessionAPITokensSaved: s.APITokensSaved,
 	}
 }
 
@@ -151,6 +155,10 @@ func (s *SessionStats) RecordAPIUsage(input, output, cacheCreate, cacheRead int)
 
 	total := input + cacheCreate + cacheRead
 	if input > 0 || cacheCreate > 0 || cacheRead > 0 {
+		// Track previous total for compression delta calculation
+		if s.LatestAPITotalInputTokens > 0 {
+			s.PrevTotalContext = s.LatestAPITotalInputTokens
+		}
 		s.LatestAPIInputTokens = input
 		s.LatestAPITotalInputTokens = total
 	}
@@ -164,6 +172,34 @@ func (s *SessionStats) RecordAPIUsage(input, output, cacheCreate, cacheRead int)
 		s.LastRequest.LatestTotalInputTokens = s.LatestAPITotalInputTokens
 		s.LastRequest.ContextWindow = s.ContextWindow
 	}
+}
+
+// RecordCompressionDelta records the API-observed token savings when compression
+// was applied. Call AFTER RecordAPIUsage on the same turn.
+func (s *SessionStats) RecordCompressionDelta(prevTotal, currentTotal int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if prevTotal > currentTotal && currentTotal > 0 {
+		delta := int64(prevTotal - currentTotal)
+		s.APITokensSaved += delta
+		if s.LastRequest != nil {
+			s.LastRequest.SessionAPITokensSaved = s.APITokensSaved
+		}
+	}
+}
+
+// GetPrevTotalContext returns the total_context from the previous turn.
+func (s *SessionStats) GetPrevTotalContext() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.PrevTotalContext
+}
+
+// GetAPITokensSaved returns the cumulative API-observed token savings.
+func (s *SessionStats) GetAPITokensSaved() int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.APITokensSaved
 }
 
 func (s *SessionStats) APIUsageTotals() (input, output, cacheCreate, cacheRead int64) {

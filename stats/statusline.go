@@ -73,7 +73,10 @@ func RenderStatusline() (string, error) {
 	// Compression: items compressed / total + before->after token delta
 	if s.SessionItemsTotal > 0 {
 		compPart := fmt.Sprintf("%d/%d results compressed", s.SessionItemsComp, s.SessionItemsTotal)
-		if s.SessionTokensBefore > 0 && s.SessionTokensAfter > 0 {
+		if s.SessionAPITokensSaved > 0 {
+			savedStr := formatTokenCount(s.SessionAPITokensSaved)
+			compPart += fmt.Sprintf(" (saved %s)", savedStr)
+		} else if s.SessionTokensBefore > 0 && s.SessionTokensAfter > 0 {
 			beforeStr := formatTokenCount(s.SessionTokensBefore)
 			afterStr := formatTokenCount(s.SessionTokensAfter)
 			compPart += fmt.Sprintf(" (%s->%s)", beforeStr, afterStr)

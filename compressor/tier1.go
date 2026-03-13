@@ -18,7 +18,7 @@ var (
 	cargoWarnRe  = regexp.MustCompile(`warning(\[|:)`)
 )
 
-func EstimateTokens(s string) int { return len(s) / 4 }
+func EstimateTokens(s string) int { return len(s) * 10 / 33 }
 
 // Tier1Compress attempts pattern-based compression for known tool families.
 // Returns compressed output and true if compression applied, or empty string and false.

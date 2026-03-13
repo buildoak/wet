@@ -361,6 +361,16 @@ func (s *Server) handleMessagesWithCompression(w http.ResponseWriter, r *http.Re
 
 	usage := forward(forwardBody)
 
+	// Record API-observed savings when compression was applied this turn
+	if result.Compressed > 0 {
+		prevTotal := s.sessionStats.GetPrevTotalContext()
+		currentTotal := usage.InputTokens + usage.CacheCreationInputTokens + usage.CacheReadInputTokens
+		if prevTotal > 0 && currentTotal > 0 {
+			s.sessionStats.RecordCompressionDelta(prevTotal, currentTotal)
+			_ = s.sessionStats.WriteStatsFile()
+		}
+	}
+
 	if isMain && store != nil {
 		var turnItems []persist.TurnItem
 		totalCharsSaved := 0
