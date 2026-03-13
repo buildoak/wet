@@ -48,6 +48,7 @@ type Server struct {
 	persistMu       sync.RWMutex
 	persistStore    *persist.Store
 	sessionUUID     string // stable session identity from --resume UUID or generated
+	statsRestored   bool
 	logMu           sync.RWMutex
 	logOutput       io.Writer
 }
@@ -443,6 +444,37 @@ func (s *Server) SessionUUID() string {
 	return s.sessionUUID
 }
 
+// RestoreResumeStats eagerly restores cumulative compression stats for resumed
+// sessions so statusline data is correct before the first proxied request.
+func (s *Server) RestoreResumeStats() {
+	uuid := s.sessionUUID
+	if uuid == "" {
+		return
+	}
+
+	store, err := persist.Open(uuid)
+	if err != nil || store == nil {
+		return
+	}
+
+	cumulative := store.LoadCumulative()
+	if cumulative.TokensBefore == 0 && cumulative.TokensAfter == 0 && cumulative.ItemsCompressed == 0 {
+		return
+	}
+
+	effectiveCount := len(store.All())
+	if cumulative.ItemsCompressed > effectiveCount {
+		effectiveCount = cumulative.ItemsCompressed
+	}
+
+	s.logf("[wet] resume: restored %d prior compressions for session %s\n", effectiveCount, uuid)
+	s.AddCompressedStats(effectiveCount, int(cumulative.TokensBefore-cumulative.TokensAfter))
+	if err := s.sessionStats.SeedCumulativeStats(cumulative.TokensBefore, cumulative.TokensAfter, effectiveCount); err != nil {
+		s.logf("[wet] persistence: cumulative stats seed error: %v\n", err)
+	}
+	s.statsRestored = true
+}
+
 func (s *Server) ensurePersistStore(systemHash string) {
 	// Use session UUID as the persistence key when available (stable across
 	// MEMORY.md changes, date changes, skill additions). Fall back to the
@@ -493,7 +525,7 @@ func (s *Server) ensurePersistStore(systemHash string) {
 	// Load cumulative stats (lifetime token totals) from disk.
 	cumulative := store.LoadCumulative()
 
-	if count > 0 || cumulative.ItemsCompressed > 0 {
+	if !s.statsRestored && (count > 0 || cumulative.ItemsCompressed > 0) {
 		effectiveCount := count
 		if cumulative.ItemsCompressed > count {
 			effectiveCount = cumulative.ItemsCompressed

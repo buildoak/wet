@@ -46,13 +46,17 @@ func RunShim(args []string) error {
 	cfg.Server.Port = port
 
 	// Extract session UUID from --resume flag, or generate a new one.
-	sessionUUID := extractResumeUUID(args)
+	resumeUUID := extractResumeUUID(args)
+	sessionUUID := resumeUUID
 	if sessionUUID == "" {
 		sessionUUID = generateUUID()
 	}
 
 	srv := proxy.NewWithLogOutput(cfg, logFile)
 	srv.SetSessionUUID(sessionUUID)
+	if resumeUUID != "" {
+		srv.RestoreResumeStats()
+	}
 	serverErrCh := make(chan error, 1)
 	go func() {
 		err := srv.ListenAndServe()
