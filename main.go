@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/buildoak/wet/cli"
 )
@@ -175,7 +176,7 @@ func runRulesCommand(args []string) error {
 	return nil
 }
 
-// extractPort scans args for --port N, calls cli.SetPort, and returns remaining args.
+// extractPort scans args for --port N or --port=N, calls cli.SetPort, and returns remaining args.
 func extractPort(args []string) []string {
 	var remaining []string
 	for i := 0; i < len(args); i++ {
@@ -187,6 +188,14 @@ func extractPort(args []string) []string {
 			}
 			cli.SetPort(port)
 			i++ // skip value
+		} else if strings.HasPrefix(args[i], "--port=") {
+			val := strings.TrimPrefix(args[i], "--port=")
+			port, err := strconv.Atoi(val)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "[wet] invalid --port value: %s\n", val)
+				os.Exit(1)
+			}
+			cli.SetPort(port)
 		} else {
 			remaining = append(remaining, args[i])
 		}
