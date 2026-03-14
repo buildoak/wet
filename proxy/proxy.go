@@ -77,6 +77,10 @@ func NewWithLogOutput(cfg *config.Config, logOutput io.Writer) *Server {
 		mode = "auto"
 	}
 	sessionStats.Mode = mode
+	// Pre-seed context window with a safe default so the statusline renders
+	// immediately on cold start.  The actual model-specific window size will
+	// overwrite this on the first proxied request via RecordModel.
+	sessionStats.ContextWindow = stats.ModelContextWindow("", cfg.Models.ContextWindows)
 
 	s := &Server{
 		cfg:          cfg,
@@ -256,7 +260,7 @@ func (s *Server) handleMessagesWithCompression(w http.ResponseWriter, r *http.Re
 	if rawModel, ok := req.Rest["model"]; ok {
 		var model string
 		if json.Unmarshal(rawModel, &model) == nil && model != "" {
-			s.sessionStats.RecordModel(model)
+			s.sessionStats.RecordModel(model, reqCfg.Models.ContextWindows)
 		}
 	}
 
@@ -307,14 +311,31 @@ func (s *Server) handleMessagesWithCompression(w http.ResponseWriter, r *http.Re
 	switch mode {
 	case "auto":
 		result = pipeline.CompressRequest(req, reqCfg)
-	case "passthrough":
-		// Only apply queued selective compression to the main session; a
-		// DrainCompressState call from a subagent request would steal the IDs
-		// queued for the main session and then do nothing useful with them.
-		if isMain {
-			targetIDs, replacements := s.DrainCompressState()
-			if len(targetIDs) > 0 {
-				result = pipeline.CompressSelected(req, reqCfg, targetIDs, replacements)
+	}
+
+	// Apply queued selective compression (from /_wet/compress) for the main
+	// session.  In passthrough mode this is the only compression path; in auto
+	// mode it supplements staleness-based compression so the control plane can
+	// trigger mechanical (Tier 1) compressions on specific IDs.
+	if isMain {
+		targetIDs, replacements := s.DrainCompressState()
+		if len(targetIDs) > 0 {
+			sel := pipeline.CompressSelected(req, reqCfg, targetIDs, replacements)
+			result.TotalToolResults += sel.TotalToolResults
+			result.Compressed += sel.Compressed
+			result.SkippedFresh += sel.SkippedFresh
+			result.SkippedBypass += sel.SkippedBypass
+			result.TokensBefore += sel.TokensBefore
+			result.TokensAfter += sel.TokensAfter
+			result.OverheadMs += sel.OverheadMs
+			result.Items = append(result.Items, sel.Items...)
+			if len(sel.Replacements) > 0 {
+				if result.Replacements == nil {
+					result.Replacements = make(map[string]string, len(sel.Replacements))
+				}
+				for id, tombstone := range sel.Replacements {
+					result.Replacements[id] = tombstone
+				}
 			}
 		}
 	}
@@ -351,13 +372,11 @@ func (s *Server) handleMessagesWithCompression(w http.ResponseWriter, r *http.Re
 				}
 			}
 		}
-		if result.Compressed > 0 {
-			s.sessionStats.RecordRequest(result)
-			_ = s.sessionStats.WriteStatsFile()
-		}
 	} else {
 		forwardBody = body
 	}
+	s.sessionStats.RecordRequest(result)
+	_ = s.sessionStats.WriteStatsFile()
 
 	usage := forward(forwardBody)
 
@@ -434,6 +453,12 @@ func cloneConfig(cfg *config.Config) *config.Config {
 		c.Rules = nil
 	}
 	c.Bypass.ContentPatterns = append([]string(nil), cfg.Bypass.ContentPatterns...)
+	if cfg.Models.ContextWindows != nil {
+		c.Models.ContextWindows = make(map[string]int, len(cfg.Models.ContextWindows))
+		for k, v := range cfg.Models.ContextWindows {
+			c.Models.ContextWindows[k] = v
+		}
+	}
 	return &c
 }
 
@@ -456,6 +481,8 @@ func (s *Server) SessionUUID() string {
 
 // RestoreResumeStats eagerly restores cumulative compression stats for resumed
 // sessions so statusline data is correct before the first proxied request.
+// It also hydrates the last turn's total_context so the statusline shows
+// context fill immediately rather than disappearing until the first API call.
 func (s *Server) RestoreResumeStats() {
 	uuid := s.sessionUUID
 	if uuid == "" {
@@ -467,8 +494,16 @@ func (s *Server) RestoreResumeStats() {
 		return
 	}
 
+	// Hydrate last turn's total context so the statusline shows context fill
+	// immediately on resume (before the first API round-trip).
+	if lastCtx := store.LastTurnTotalContext(); lastCtx > 0 {
+		s.sessionStats.SetLatestTotalInputTokens(lastCtx)
+	}
+
 	cumulative := store.LoadCumulative()
 	if cumulative.TokensBefore == 0 && cumulative.TokensAfter == 0 && cumulative.ItemsCompressed == 0 {
+		// Still re-write the initial stats file so context fill shows up.
+		_ = s.sessionStats.WriteInitialStatsFile()
 		return
 	}
 

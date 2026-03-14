@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -14,6 +15,11 @@ type Config struct {
 	Compression CompressionConfig
 	Rules       map[string]RuleConfig
 	Bypass      BypassConfig
+	Models      ModelsConfig
+}
+
+type ModelsConfig struct {
+	ContextWindows map[string]int `toml:"context_windows"`
 }
 
 type ServerConfig struct {
@@ -92,7 +98,47 @@ func Default() *Config {
 				"failed",
 			},
 		},
+		Models: ModelsConfig{},
 	}
+}
+
+// DefaultContextWindows returns the built-in context window sizes.
+func DefaultContextWindows() map[string]int {
+	return map[string]int{
+		"claude-opus-4-6":   1_000_000,
+		"claude-sonnet-4-6": 1_000_000,
+		"claude-sonnet-4-5": 1_000_000,
+		"claude-haiku-4-5":  200_000,
+	}
+}
+
+// ModelContextWindow returns the context window size for a model name.
+// It merges configured context_windows on top of built-in defaults,
+// then uses contains-matching (e.g. "claude-opus-4-6-20250801" matches
+// "claude-opus-4-6"), falling back to 200000 for unknown models.
+func (c *Config) ModelContextWindow(model string) int {
+	m := strings.ToLower(model)
+	// Merge: defaults first, then config overrides.
+	windows := DefaultContextWindows()
+	for k, v := range c.Models.ContextWindows {
+		windows[k] = v
+	}
+	// Try exact match first, then contains-match (longest key wins).
+	if v, ok := windows[m]; ok {
+		return v
+	}
+	bestKey := ""
+	bestVal := 0
+	for key, val := range windows {
+		if strings.Contains(m, strings.ToLower(key)) && len(key) > len(bestKey) {
+			bestKey = key
+			bestVal = val
+		}
+	}
+	if bestKey != "" {
+		return bestVal
+	}
+	return 200_000
 }
 
 func Load(path string) *Config {

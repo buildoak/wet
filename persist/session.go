@@ -190,3 +190,18 @@ func (s *Store) ReadSession() (*SessionHeader, []TurnRecord, error) {
 
 	return &header, turns, nil
 }
+
+// LastTurnTotalContext returns the total_context value from the most recent
+// turn record in session.jsonl. Returns 0 if there are no turns or on error.
+// This is used to hydrate the statusline on resume so it shows context fill
+// immediately rather than waiting for the first API round-trip.
+func (s *Store) LastTurnTotalContext() int {
+	if s == nil {
+		return 0
+	}
+	_, turns, err := s.ReadSession()
+	if err != nil || len(turns) == 0 {
+		return 0
+	}
+	return turns[len(turns)-1].TotalContext
+}

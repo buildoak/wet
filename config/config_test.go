@@ -42,6 +42,13 @@ func TestDefaultConfig(t *testing.T) {
 	if len(cfg.Bypass.ContentPatterns) == 0 {
 		t.Fatal("expected default bypass content patterns")
 	}
+	// Default() has nil ContextWindows; lookup falls back to DefaultContextWindows().
+	if cfg.Models.ContextWindows != nil {
+		t.Fatalf("expected nil default context windows, got %v", cfg.Models.ContextWindows)
+	}
+	if v := cfg.ModelContextWindow("claude-opus-4-6"); v != 1000000 {
+		t.Fatalf("expected opus-4-6 fallback context window 1000000, got %d", v)
+	}
 }
 
 func TestLoadFromFile(t *testing.T) {
@@ -106,6 +113,42 @@ keep = "bullets"
 	}
 	if rule.Strategy != "tier2" || rule.StaleAfter != 10 || rule.Keep != "bullets" {
 		t.Fatalf("unexpected chat rule: %+v", rule)
+	}
+}
+
+func TestLoadModelsFromFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "wet.toml")
+
+	content := `
+[models]
+[models.context_windows]
+claude-opus-4-6 = 500000
+claude-custom-99 = 2000000
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg := Load(path)
+	if cfg.Models.ContextWindows["claude-opus-4-6"] != 500000 {
+		t.Fatalf("expected opus-4-6 context window 500000, got %d", cfg.Models.ContextWindows["claude-opus-4-6"])
+	}
+	if cfg.Models.ContextWindows["claude-custom-99"] != 2000000 {
+		t.Fatalf("expected custom-99 context window 2000000, got %d", cfg.Models.ContextWindows["claude-custom-99"])
+	}
+
+	// ModelContextWindow method: exact match
+	if v := cfg.ModelContextWindow("claude-opus-4-6"); v != 500000 {
+		t.Fatalf("expected ModelContextWindow(claude-opus-4-6) = 500000, got %d", v)
+	}
+	// Contains match with date suffix
+	if v := cfg.ModelContextWindow("claude-custom-99-20260101"); v != 2000000 {
+		t.Fatalf("expected ModelContextWindow(claude-custom-99-20260101) = 2000000, got %d", v)
+	}
+	// Unknown model falls back to 200000
+	if v := cfg.ModelContextWindow("unknown-model"); v != 200000 {
+		t.Fatalf("expected ModelContextWindow(unknown-model) = 200000, got %d", v)
 	}
 }
 

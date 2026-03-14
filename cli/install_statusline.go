@@ -39,7 +39,7 @@ if [ -n "$WET_STATS" ] && [ -f "$WET_STATS" ]; then
         .session_items_compressed // 0,
         .session_items_total // 0,
         .context_window // 0,
-        .latest_input_tokens // 0,
+        .latest_total_input_tokens // 0,
         .session_tokens_before // 0,
         .session_tokens_after // 0
     ] | @tsv' "$WET_STATS" 2>/dev/null) || WET_DATA=""
@@ -71,8 +71,12 @@ if [ -n "$WET_STATS" ] && [ -f "$WET_STATS" ]; then
                 WET_PARTS="${W_PCT}% (${W_INPUT_FMT}/${W_CTX_FMT})"
             fi
 
-            if [ "${W_TOTAL:-0}" -gt 0 ]; then
-                COMP_PART="${W_COMP}/${W_TOTAL} compressed"
+            if [ "${W_COMP:-0}" -gt 0 ]; then
+                if [ "${W_TOTAL:-0}" -gt 0 ]; then
+                    COMP_PART="${W_COMP}/${W_TOTAL} compressed"
+                else
+                    COMP_PART="${W_COMP} compressed"
+                fi
                 if [ "${W_BEFORE:-0}" -gt 0 ] && [ "${W_AFTER:-0}" -gt 0 ]; then
                     if [ "$W_BEFORE" -ge 1000000 ]; then
                         W_BEFORE_FMT=$(printf "%.1fM" "$(echo "$W_BEFORE / 1000000" | bc -l)")

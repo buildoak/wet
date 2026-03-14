@@ -76,9 +76,9 @@ func RunShim(args []string) error {
 		return err
 	}
 
-	// Clear stale stats from previous session so statusline doesn't show old data.
-	statsPath := expandHome(fmt.Sprintf("~/.wet/stats-%d.json", port))
-	_ = os.WriteFile(statsPath, []byte("{}"), 0o644)
+	// Note: WriteInitialStatsFile (called in proxy.New) already writes a
+	// properly hydrated stats file. No need to clear stale data here --
+	// each session uses a fresh random port, so there's no cross-session bleed.
 
 	baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
 	portStr := fmt.Sprintf("%d", port)

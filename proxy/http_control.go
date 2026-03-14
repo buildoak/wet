@@ -63,9 +63,10 @@ func (s *Server) httpStatus(w http.ResponseWriter, r *http.Request) {
 		"api_input_tokens":     snap.APIInputTokens,
 		"api_output_tokens":    snap.APIOutputTokens,
 		"context_window":       snap.ContextWindow,
-		"latest_input_tokens":  s.sessionStats.GetLatestAPIInputTokens(),
-		"paused":               s.ctrl.paused.Load(),
-		"mode":                 s.Mode(),
+		"latest_input_tokens":       s.sessionStats.GetLatestAPIInputTokens(),
+		"latest_total_input_tokens": s.sessionStats.GetLatestAPITotalInputTokens(),
+		"paused":                    s.ctrl.paused.Load(),
+		"mode":                      s.Mode(),
 	})
 }
 
@@ -317,9 +318,10 @@ func (s *Server) SessionStatsJSON() map[string]any {
 		"api_input_tokens":     snap.APIInputTokens,
 		"api_output_tokens":    snap.APIOutputTokens,
 		"context_window":       snap.ContextWindow,
-		"latest_input_tokens":  s.sessionStats.GetLatestAPIInputTokens(),
-		"paused":               s.ctrl.paused.Load(),
-		"mode":                 s.Mode(),
+		"latest_input_tokens":       s.sessionStats.GetLatestAPIInputTokens(),
+		"latest_total_input_tokens": s.sessionStats.GetLatestAPITotalInputTokens(),
+		"paused":                    s.ctrl.paused.Load(),
+		"mode":                      s.Mode(),
 	}
 }
 

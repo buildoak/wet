@@ -137,7 +137,8 @@ func (s *SessionStats) RecordRequest(result pipeline.CompressResult) {
 		SessionCompRatio:      sessionRatio,
 		SessionMode:           mode,
 		ContextWindow:         s.ContextWindow,
-		LatestInputTokens:     s.LatestAPIInputTokens,
+		LatestInputTokens:      s.LatestAPIInputTokens,
+		LatestTotalInputTokens: s.LatestAPITotalInputTokens,
 		SessionTokensBefore:   s.TokensBefore,
 		SessionTokensAfter:    s.TokensAfter,
 		SessionAPITokensSaved: s.APITokensSaved,
@@ -229,6 +230,23 @@ func (s *SessionStats) GetLatestAPIInputTokens() int {
 	return s.LatestAPIInputTokens
 }
 
+// GetLatestAPITotalInputTokens returns the most recent single-request total input token count
+// (input + cache_create + cache_read).
+func (s *SessionStats) GetLatestAPITotalInputTokens() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.LatestAPITotalInputTokens
+}
+
+// SetLatestTotalInputTokens sets the latest total input tokens from persisted
+// session data. Used to hydrate the statusline on resume before the first
+// API round-trip.
+func (s *SessionStats) SetLatestTotalInputTokens(total int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.LatestAPITotalInputTokens = total
+}
+
 // TotalItems returns cumulative tool result count across all requests.
 func (s *SessionStats) TotalItems() int64 {
 	s.mu.Lock()
@@ -262,6 +280,7 @@ func (s *SessionStats) SeedPersistedCompressions(count int) error {
 		}
 	}
 	s.LastRequest.SessionItemsComp = s.TotalCompressed
+	s.LastRequest.SessionItemsTotal = s.TotalToolResults
 	s.mu.Unlock()
 	return s.WriteStatsFile()
 }
@@ -291,12 +310,15 @@ func (s *SessionStats) SeedCumulativeStats(tokensBefore, tokensAfter int64, item
 	s.LastRequest.SessionTokensBefore = s.TokensBefore
 	s.LastRequest.SessionTokensAfter = s.TokensAfter
 	s.LastRequest.SessionItemsComp = s.TotalCompressed
+	s.LastRequest.SessionItemsTotal = s.TotalToolResults
 	s.mu.Unlock()
 	return s.WriteStatsFile()
 }
 
 // WriteInitialStatsFile writes a minimal stats file so the statusline can show
 // "ready to compress!" before any requests have been processed.
+// It hydrates ContextWindow and any available cumulative data so the statusline
+// renders immediately on cold start (fresh or resume).
 func (s *SessionStats) WriteInitialStatsFile() error {
 	s.mu.Lock()
 	mode := s.Mode
@@ -304,8 +326,16 @@ func (s *SessionStats) WriteInitialStatsFile() error {
 		mode = "auto"
 	}
 	s.LastRequest = &RequestStats{
-		Timestamp:   time.Now().UTC().Format(time.RFC3339),
-		SessionMode: mode,
+		Timestamp:              time.Now().UTC().Format(time.RFC3339),
+		SessionMode:            mode,
+		ContextWindow:          s.ContextWindow,
+		LatestTotalInputTokens: s.LatestAPITotalInputTokens,
+		LatestInputTokens:      s.LatestAPIInputTokens,
+		SessionTokensBefore:    s.TokensBefore,
+		SessionTokensAfter:     s.TokensAfter,
+		SessionItemsComp:       s.TotalCompressed,
+		SessionItemsTotal:      s.TotalToolResults,
+		SessionTokensSaved:     s.TokensBefore - s.TokensAfter,
 	}
 	s.mu.Unlock()
 	return s.WriteStatsFile()
@@ -368,36 +398,54 @@ func (s *SessionStats) HealthResponse() HealthResponse {
 
 // RecordModel stores the detected model name and derives the context window size.
 // Called once per request from the proxy when the model field is found.
-func (s *SessionStats) RecordModel(model string) {
+// contextWindows is the map from config; if nil, built-in defaults are used.
+func (s *SessionStats) RecordModel(model string, contextWindows map[string]int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.Model = model
-	s.ContextWindow = ModelContextWindow(model)
+	s.ContextWindow = ModelContextWindow(model, contextWindows)
 }
 
 // ModelContextWindow returns the context window size for a given model name.
-// Defaults to 200000 for unknown models.
-func ModelContextWindow(model string) int {
+// It checks contextWindows using contains-matching (longest key wins),
+// falling back to 200000 for unknown models.
+func ModelContextWindow(model string, contextWindows map[string]int) int {
 	m := strings.ToLower(model)
 
-	// Extended thinking models with 1M context
-	// (Currently none in GA, but future-proof the mapping)
+	if contextWindows == nil {
+		contextWindows = defaultContextWindows()
+	}
 
-	// All current Claude 3.5+ and Claude 4+ models: 200k
-	switch {
-	case strings.Contains(m, "claude-opus-4"),
-		strings.Contains(m, "claude-sonnet-4"),
-		strings.Contains(m, "claude-haiku-4"),
-		strings.Contains(m, "claude-3-5"),
-		strings.Contains(m, "claude-3.5"),
-		strings.Contains(m, "claude-sonnet-3"),
-		strings.Contains(m, "claude-opus-3"),
-		strings.Contains(m, "claude-haiku-3"):
-		return 200_000
+	// Exact match first.
+	if v, ok := contextWindows[m]; ok {
+		return v
+	}
+
+	// Contains-match: longest matching key wins.
+	bestKey := ""
+	bestVal := 0
+	for key, val := range contextWindows {
+		if strings.Contains(m, strings.ToLower(key)) && len(key) > len(bestKey) {
+			bestKey = key
+			bestVal = val
+		}
+	}
+	if bestKey != "" {
+		return bestVal
 	}
 
 	// Default: 200k (safest assumption for Anthropic models)
 	return 200_000
+}
+
+// defaultContextWindows returns hardcoded fallback context window sizes.
+func defaultContextWindows() map[string]int {
+	return map[string]int{
+		"claude-opus-4-6":   1_000_000,
+		"claude-sonnet-4-6": 1_000_000,
+		"claude-sonnet-4-5": 1_000_000,
+		"claude-haiku-4-5":  200_000,
+	}
 }
 
 // wetDirFn is overridable for testing.

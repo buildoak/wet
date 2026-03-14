@@ -376,12 +376,12 @@ func TestWriteStatsFileSessionFields(t *testing.T) {
 
 func TestRecordModel(t *testing.T) {
 	s := NewSessionStats()
-	s.RecordModel("claude-opus-4-6-20250310")
+	s.RecordModel("claude-opus-4-6-20250310", nil)
 	if s.Model != "claude-opus-4-6-20250310" {
 		t.Fatalf("expected model 'claude-opus-4-6-20250310', got %s", s.Model)
 	}
-	if s.ContextWindow != 200000 {
-		t.Fatalf("expected context window 200000, got %d", s.ContextWindow)
+	if s.ContextWindow != 1000000 {
+		t.Fatalf("expected context window 1000000, got %d", s.ContextWindow)
 	}
 }
 
@@ -390,24 +390,48 @@ func TestModelContextWindow(t *testing.T) {
 		model    string
 		expected int
 	}{
-		{"claude-opus-4-6-20250310", 200000},
-		{"claude-sonnet-4-6-20250514", 200000},
+		// Default context windows (nil map = built-in defaults)
+		{"claude-opus-4-6-20250310", 1000000},
+		{"claude-sonnet-4-6-20250514", 1000000},
+		{"claude-sonnet-4-5-20250301", 1000000},
 		{"claude-haiku-4-5-20250301", 200000},
 		{"claude-3-5-sonnet-20241022", 200000},
 		{"claude-3.5-haiku-20241022", 200000},
 		{"unknown-model", 200000},
 	}
 	for _, tc := range tests {
-		got := ModelContextWindow(tc.model)
+		got := ModelContextWindow(tc.model, nil)
 		if got != tc.expected {
 			t.Errorf("ModelContextWindow(%q) = %d, want %d", tc.model, got, tc.expected)
 		}
 	}
 }
 
+func TestModelContextWindowCustomConfig(t *testing.T) {
+	custom := map[string]int{
+		"claude-opus-4-6":    500000,
+		"claude-custom-99":   2000000,
+	}
+	tests := []struct {
+		model    string
+		expected int
+	}{
+		{"claude-opus-4-6-20250310", 500000},   // contains-match
+		{"claude-opus-4-6", 500000},             // exact match
+		{"claude-custom-99-20260101", 2000000},  // contains-match custom
+		{"unknown-model", 200000},               // fallback
+	}
+	for _, tc := range tests {
+		got := ModelContextWindow(tc.model, custom)
+		if got != tc.expected {
+			t.Errorf("ModelContextWindow(%q) with custom config = %d, want %d", tc.model, got, tc.expected)
+		}
+	}
+}
+
 func TestRecordAPIUsageUpdatesLatest(t *testing.T) {
 	s := NewSessionStats()
-	s.RecordModel("claude-opus-4-6")
+	s.RecordModel("claude-opus-4-6", nil)
 	s.RecordRequest(pipeline.CompressResult{
 		TotalToolResults: 5,
 		Compressed:       3,
@@ -426,8 +450,8 @@ func TestRecordAPIUsageUpdatesLatest(t *testing.T) {
 	if s.LastRequest.LatestInputTokens != 92000 {
 		t.Fatalf("expected LastRequest.LatestInputTokens 92000, got %d", s.LastRequest.LatestInputTokens)
 	}
-	if s.LastRequest.ContextWindow != 200000 {
-		t.Fatalf("expected LastRequest.ContextWindow 200000, got %d", s.LastRequest.ContextWindow)
+	if s.LastRequest.ContextWindow != 1000000 {
+		t.Fatalf("expected LastRequest.ContextWindow 1000000, got %d", s.LastRequest.ContextWindow)
 	}
 }
 
