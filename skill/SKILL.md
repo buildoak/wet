@@ -1,8 +1,8 @@
 ---
 name: wet-compress
-description: Context compression for Claude Code sessions via wet proxy
+description: CLI-based context compression for Claude Code sessions via wet proxy
 author: R. Jenkins
-version: 0.8.0
+version: 0.9.0
 tools: [Bash, Agent]
 triggers:
   - context heavy, compress context, wet compress
@@ -17,7 +17,7 @@ references:
 
 # wet-compress
 
-Compress stale tool results through wet's HTTP control plane. Five phases, strict order. Heavy work runs in subagents — the main session stays lean.
+Compress stale tool results through the `wet` CLI. Five phases, strict order. Heavy work runs in subagents — the main session stays lean.
 
 **This skill IS Tier 2.** The binary handles Tier 1 (mechanical, regex, <5ms). The skill orchestrates LLM rewrites for agent returns, search results, and file reads — the high-value compressions that Tier 1 can't touch.
 
@@ -25,23 +25,13 @@ See `references/architecture.md` for how wet works. See `references/heuristics.m
 
 ---
 
-## Port Detection
-
-Run ONCE at the start. Everything below uses `$WET_PORT`.
+## Phase 1 — Health Check (main session, 1 command)
 
 ```bash
-WET_PORT="${WET_PORT:-$(lsof -i -P -n 2>/dev/null | grep wet | grep LISTEN | awk '{print $9}' | cut -d: -f2 | sort -n | tail -1)}"
+wet status --json
 ```
 
-If empty: wet is not running. Tell the user and STOP.
-
----
-
-## Phase 1 — Health Check (main session, 1 curl)
-
-```bash
-curl -s "http://localhost:$WET_PORT/_wet/status"
-```
+If wet is not running, the command will error. Tell the user and STOP.
 
 Report: mode, fill%, request_count, tokens_saved.
 
@@ -54,15 +44,15 @@ Report: mode, fill%, request_count, tokens_saved.
 
 ## Phase 2 — Profile (Sonnet 4.6 subagent)
 
-Spawn a subagent with this EXACT prompt (fill in `«WET_PORT»`):
+Spawn a subagent with this EXACT prompt:
 
 > You are a context profiler for the wet compression proxy.
 >
 > **Task:**
-> 1. Call `GET http://localhost:«WET_PORT»/_wet/status` — this is the API ground truth for context fill. Extract `latest_total_input_tokens` and `context_window`. Compute `fill_pct = latest_total_input_tokens * 100 / context_window`.
-> 2. Call `GET http://localhost:«WET_PORT»/_wet/inspect` — this lists compressible tool results only (a subset of total context). System prompt, user/assistant text, tool_use blocks, and protocol overhead are NOT in inspect and NOT compressible.
+> 1. Run `wet status --json` — this is the API ground truth for context fill. Extract `latest_total_input_tokens` and `context_window`. Compute `fill_pct = latest_total_input_tokens * 100 / context_window`.
+> 2. Run `wet inspect --json` — this lists compressible tool results only (a subset of total context). System prompt, user/assistant text, tool_use blocks, and protocol overhead are NOT in inspect and NOT compressible.
 >
-> **IMPORTANT:** `fill_pct` MUST come from `/_wet/status` (API ground truth), NOT from summing inspect token counts. Inspect tells you what's compressible, not how full the context is.
+> **IMPORTANT:** `fill_pct` MUST come from `wet status` (API ground truth), NOT from summing inspect token counts. Inspect tells you what's compressible, not how full the context is.
 >
 > **Classification rules (apply in order):**
 > 1. **PROTECTED** — `is_error == true`, `current_turn - turn <= 3`, `has_images == true`, content contains `[compressed`, token_count < 50, OR any tool with token_count < 250 that isn't AGENT_RETURN/SEARCH/FILE_READ. Never compress. (Tier 1 adds ~20-token tombstone wrapper; items under 250 tokens hit the economic gate — compressed + tombstone ≥ original.)
@@ -76,11 +66,11 @@ Spawn a subagent with this EXACT prompt (fill in `«WET_PORT»`):
 > **Output this exact structured data only:**
 >
 > ```
-> CONTEXT (from /_wet/status)
+> CONTEXT (from wet status)
 > fill_pct: N% (Nk / Nk)
 > context_window: N
 >
-> TOOL RESULTS (from /_wet/inspect)
+> TOOL RESULTS (from wet inspect)
 > total_items: N
 > total_tokens: N (N% of context is compressible tool results)
 > non_compressible: ~Nk (system prompt, conversation, overhead)
@@ -163,22 +153,18 @@ Delete = "unread": minimal tombstone `[deleted: file_read | removed by user]`, n
 
 ## Phase 4 — Compress (Sonnet 4.6 subagent)
 
-Spawn a subagent (fill in `«WET_PORT»`, `«MECHANICAL_IDS»`, `«REWRITE_IDS»` (agent + search), `«SUMMARIZE_FILE_IDS»`, `«DELETE_FILE_IDS»`):
+Spawn a subagent (fill in `«MECHANICAL_IDS»`, `«REWRITE_IDS»` (agent + search), `«SUMMARIZE_FILE_IDS»`, `«DELETE_FILE_IDS»`):
 
-> You are a context compressor for the wet proxy.
+> You are a context compressor for the wet proxy. All commands use the `wet` CLI.
 >
-> **Endpoint:** `http://localhost:«WET_PORT»`
->
-> **Step 1 — Mechanical:** POST Bash IDs only, no replacement_text. Tier 1 handles them.
+> **Step 1 — Mechanical:** Compress Bash IDs only, no replacement text. Tier 1 handles them.
 > ```bash
-> curl -s -X POST "http://localhost:«WET_PORT»/_wet/compress" \
->   -H 'Content-Type: application/json' \
->   -d '{"ids": [«MECHANICAL_IDS»]}'
+> wet compress --ids «MECHANICAL_IDS»
 > ```
 >
 > **Step 2 — LLM rewrite (agent returns + search results + summarized files):**
 > IDs: «REWRITE_IDS» «SUMMARIZE_FILE_IDS»
-> For EACH: fetch full content via `GET /_wet/inspect?full=1`, find the item by id, then write a dense summary.
+> For EACH: fetch full content via `wet inspect --json --full`, find the item by id, then write a dense summary.
 >
 > **TOKEN BUDGETS (hard limits — not suggestions):**
 > - Agent returns: **max 150 tokens**
@@ -203,18 +189,15 @@ Spawn a subagent (fill in `«WET_PORT»`, `«MECHANICAL_IDS»`, `«REWRITE_IDS»
 > BEFORE (2000 tokens): "Root cause found. In proxy/proxy.go line 354, RecordRequest is inside the if result.Compressed > 0 block. When no compression happens, the else branch just forwards the body and never calls RecordRequest. This means session_requests stays at 0 in the stats file despite..."
 > AFTER (40 tokens): "Root cause: RecordRequest gated by result.Compressed>0 in proxy.go:354. Passthrough mode skips session_requests increment. Fix: move RecordRequest outside conditional."
 >
-> POST all rewrites in one call:
+> Submit all rewrites in one call:
 > ```bash
-> curl -s -X POST "http://localhost:«WET_PORT»/_wet/compress" \
->   -H 'Content-Type: application/json' \
->   -d '{"ids": ["id5","id7"], "replacement_text": {"id5": "summary...", "id7": "summary..."}}'
+> wet compress --ids id5,id7 --text '{"id5": "summary...", "id7": "summary..."}'
 > ```
+> For large replacement payloads, write JSON to a file and use `--text-file path`.
 >
 > **Step 3 — Delete:** IDs: «DELETE_FILE_IDS»
 > ```bash
-> curl -s -X POST "http://localhost:«WET_PORT»/_wet/compress" \
->   -H 'Content-Type: application/json' \
->   -d '{"ids": [«DELETE_FILE_IDS»], "replacement_text": {"«id»": "[deleted: file_read | removed by user]"}}'
+> wet compress --ids «DELETE_FILE_IDS» --text '{"«id»": "[deleted: file_read | removed by user]"}'
 > ```
 >
 > **Step 4 — Report (under 80 tokens):**
@@ -224,10 +207,10 @@ Compressions are queued — applied on the NEXT API request.
 
 ---
 
-## Phase 5 — Verify (main session, 1 curl)
+## Phase 5 — Verify (main session, 1 command)
 
 ```bash
-curl -s "http://localhost:$WET_PORT/_wet/status"
+wet status --json
 ```
 
 Report: new fill%, tokens_saved, items_compressed. Compare to Phase 1. Prefer `session_api_tokens_saved` (exact) over `session_tokens_saved` (estimate).
