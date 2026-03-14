@@ -156,7 +156,11 @@ func TestLoadFallback(t *testing.T) {
 	home := t.TempDir()
 	work := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Chdir(work)
+	origDir, _ := os.Getwd()
+	if err := os.Chdir(work); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chdir(origDir) })
 
 	cfg := Load("")
 	def := Default()
