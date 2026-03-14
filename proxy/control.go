@@ -173,8 +173,7 @@ func (s *Server) GetToolResults() []messages.ToolResultInfo {
 func (s *Server) QueueCompressIDs(ids []string) {
 	s.ctrl.mu.Lock()
 	defer s.ctrl.mu.Unlock()
-	s.ctrl.compressIDs = ids
-	s.ctrl.compressReplace = nil
+	s.ctrl.compressIDs = append(s.ctrl.compressIDs, ids...)
 }
 
 // QueueCompressWithText queues IDs for selective compression with optional
@@ -183,8 +182,15 @@ func (s *Server) QueueCompressIDs(ids []string) {
 func (s *Server) QueueCompressWithText(ids []string, replacements map[string]string) {
 	s.ctrl.mu.Lock()
 	defer s.ctrl.mu.Unlock()
-	s.ctrl.compressIDs = ids
-	s.ctrl.compressReplace = replacements
+	s.ctrl.compressIDs = append(s.ctrl.compressIDs, ids...)
+	if len(replacements) > 0 {
+		if s.ctrl.compressReplace == nil {
+			s.ctrl.compressReplace = make(map[string]string, len(replacements))
+		}
+		for k, v := range replacements {
+			s.ctrl.compressReplace[k] = v
+		}
+	}
 }
 
 func (s *Server) DrainCompressIDs() []string {
