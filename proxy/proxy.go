@@ -633,74 +633,12 @@ func filterPersistableReplacements(replacements map[string]string, idCounts map[
 	return out
 }
 
-func copyHeader(h http.Header, key, value string) {
-	if value == "" {
-		return
-	}
-	h.Set(key, value)
-}
-
 func newSSERequestID() string {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
 		return fmt.Sprintf("sse-%d", time.Now().UnixNano())
 	}
 	return fmt.Sprintf("%x", b)
-}
-
-func joinURLPath(a, b *url.URL) (path, rawpath string) {
-	if a.RawPath == "" && b.RawPath == "" {
-		return singleJoiningSlash(a.Path, b.Path), ""
-	}
-
-	apath := a.EscapedPath()
-	bpath := b.EscapedPath()
-	aslash := len(apath) > 0 && apath[len(apath)-1] == '/'
-	bslash := len(bpath) > 0 && bpath[0] == '/'
-	switch {
-	case aslash && bslash:
-		return a.Path + b.Path[1:], apath + bpath[1:]
-	case !aslash && !bslash:
-		return a.Path + "/" + b.Path, apath + "/" + bpath
-	}
-	return a.Path + b.Path, apath + bpath
-}
-
-func singleJoiningSlash(a, b string) string {
-	aslash := len(a) > 0 && a[len(a)-1] == '/'
-	bslash := len(b) > 0 && b[0] == '/'
-	switch {
-	case aslash && bslash:
-		return a + b[1:]
-	case !aslash && !bslash:
-		return a + "/" + b
-	}
-	return a + b
-}
-
-func normalizeAPIPath(path, rawpath string) (string, string) {
-	if strings.HasPrefix(path, "/v1/") || path == "/v1" {
-		return path, rawpath
-	}
-
-	if path == "" {
-		path = "/"
-	}
-	if strings.HasPrefix(path, "/") {
-		path = "/v1" + path
-	} else {
-		path = "/v1/" + path
-	}
-
-	if rawpath != "" && !strings.HasPrefix(rawpath, "/v1/") && rawpath != "/v1" {
-		if strings.HasPrefix(rawpath, "/") {
-			rawpath = "/v1" + rawpath
-		} else {
-			rawpath = "/v1/" + rawpath
-		}
-	}
-
-	return path, rawpath
 }
 
 func isMessagesPath(path string) bool {

@@ -297,10 +297,6 @@ func writeHTTPJSON(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-func writeHTTPError(w http.ResponseWriter, status int, code, message string) {
-	writeHTTPErrorWithEndpoint(w, "", status, code, message)
-}
-
 func writeHTTPErrorWithEndpoint(w http.ResponseWriter, endpoint string, status int, code, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -338,35 +334,3 @@ func (s *Server) Uptime() time.Duration {
 	return time.Since(s.startTime)
 }
 
-// SessionStatsJSON returns a StatusSnapshot enriched with extra fields for the HTTP status endpoint.
-func (s *Server) SessionStatsJSON() map[string]any {
-	snap := s.StatusSnapshot()
-
-	compressionRatio := 0.0
-	tokensBefore := s.sessionStats.TotalTokensBefore()
-	if tokensBefore > 0 {
-		compressionRatio = 1.0 - float64(tokensBefore-snap.TokensSaved)/float64(tokensBefore)
-	}
-
-	return map[string]any{
-		"uptime_seconds":            s.Uptime().Seconds(),
-		"request_count":             snap.Requests,
-		"compressed":                snap.Compressed,
-		"tokens_saved":              snap.TokensSaved,
-		"compression_ratio":         compressionRatio,
-		"items_compressed":          snap.Compressed,
-		"items_total":               s.sessionStats.TotalItems(),
-		"api_input_tokens":          snap.APIInputTokens,
-		"api_output_tokens":         snap.APIOutputTokens,
-		"context_window":            snap.ContextWindow,
-		"latest_input_tokens":       s.sessionStats.GetLatestAPIInputTokens(),
-		"latest_total_input_tokens": s.sessionStats.GetLatestAPITotalInputTokens(),
-		"paused":                    s.ctrl.paused.Load(),
-		"mode":                      s.Mode(),
-	}
-}
-
-// formatHTTPError builds a structured error string for agent consumption.
-func formatHTTPError(code, message string) string {
-	return fmt.Sprintf("%s: %s", code, message)
-}

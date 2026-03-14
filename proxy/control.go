@@ -89,12 +89,6 @@ func (s *Server) IsPaused() bool {
 	return s.ctrl.paused.Load()
 }
 
-func (s *Server) RecordTombstone(rec TombstoneRecord) {
-	s.ctrl.mu.Lock()
-	defer s.ctrl.mu.Unlock()
-	s.ctrl.tombstones = append(s.ctrl.tombstones, rec)
-}
-
 // HashSystemPrompt computes a short fingerprint for a system-prompt string.
 // It hashes the first 500 characters to keep costs constant on long prompts.
 func HashSystemPrompt(system string) string {
@@ -218,16 +212,6 @@ func (s *Server) DrainCompressState() ([]string, map[string]string) {
 func (s *Server) AddCompressedStats(compressed int, tokensSaved int) {
 	s.ctrl.totalCompressed.Add(int64(compressed))
 	s.ctrl.totalSaved.Add(int64(tokensSaved))
-}
-
-func (s *Server) recordAPIUsage(usage UsageData) {
-	s.sessionStats.RecordAPIUsage(
-		usage.InputTokens,
-		usage.OutputTokens,
-		usage.CacheCreationInputTokens,
-		usage.CacheReadInputTokens,
-	)
-	_ = s.sessionStats.WriteStatsFile()
 }
 
 func expandHome(p string) string {
