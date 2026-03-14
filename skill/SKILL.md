@@ -178,10 +178,30 @@ Spawn a subagent (fill in `«WET_PORT»`, `«MECHANICAL_IDS»`, `«REWRITE_IDS»
 >
 > **Step 2 — LLM rewrite (agent returns + search results + summarized files):**
 > IDs: «REWRITE_IDS» «SUMMARIZE_FILE_IDS»
-> For EACH: fetch full content via `GET /_wet/inspect?full=1`, find the item by id, then write a dense summary:
-> - **Agent returns** (<150 tokens): preserve key findings, decisions, paths, metrics, conclusions.
-> - **Search results** (<100 tokens): preserve which files matched, match counts, key line numbers and content of important matches. Drop redundant matches.
-> - **File summaries** (<100 tokens): preserve file purpose, key structures, important values.
+> For EACH: fetch full content via `GET /_wet/inspect?full=1`, find the item by id, then write a dense summary.
+>
+> **TOKEN BUDGETS (hard limits — not suggestions):**
+> - Agent returns: **max 150 tokens**
+> - Search results: **max 100 tokens**
+> - File summaries: **max 100 tokens**
+>
+> **WHAT TO PRESERVE (priority order):** decisions made, file paths mentioned, error messages, metrics/numbers, conclusions reached.
+> **WHAT TO DROP:** reasoning chains, code snippets, verbose explanations, examples, metadata blocks (`<usage>`, `agentId:`, timestamps), markdown formatting, hedging language.
+>
+> **ANTI-PASS-THROUGH RULE — READ THIS TWICE:**
+> You are a SUMMARIZER, not a wrapper. Your job is to EXTRACT and CONDENSE, not to copy.
+> - NEVER submit original content as replacement_text.
+> - NEVER wrap original text in a tombstone envelope.
+> - NEVER include code blocks in summaries — describe what the code does in one sentence.
+> - If your summary is longer than 20% of the original, you FAILED. Cut harder.
+> - A 2000-token agent return must become ~150 tokens. A 500-token search result must become ~80 tokens. If you're writing 400+ tokens for any single item, STOP and rewrite shorter.
+>
+> **VERIFICATION (do this for every item):**
+> After writing each summary, estimate tokens (word count × 1.3). If over budget, cut further. Target 80%+ compression on every item. If you cannot hit 80%, you are copying instead of summarizing — rewrite from scratch using only your memory of the key facts.
+>
+> **Example — this is the density you must hit:**
+> BEFORE (2000 tokens): "Root cause found. In proxy/proxy.go line 354, RecordRequest is inside the if result.Compressed > 0 block. When no compression happens, the else branch just forwards the body and never calls RecordRequest. This means session_requests stays at 0 in the stats file despite..."
+> AFTER (40 tokens): "Root cause: RecordRequest gated by result.Compressed>0 in proxy.go:354. Passthrough mode skips session_requests increment. Fix: move RecordRequest outside conditional."
 >
 > POST all rewrites in one call:
 > ```bash

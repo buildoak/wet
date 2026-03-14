@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/otonashi/wet/config"
@@ -54,15 +55,15 @@ func (s *Server) httpStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeHTTPJSON(w, http.StatusOK, map[string]any{
-		"uptime_seconds":       time.Since(s.startTime).Seconds(),
-		"request_count":        snap.Requests,
-		"tokens_saved":         snap.TokensSaved,
-		"compression_ratio":    compressionRatio,
-		"items_compressed":     snap.Compressed,
-		"items_total":          s.sessionStats.TotalItems(),
-		"api_input_tokens":     snap.APIInputTokens,
-		"api_output_tokens":    snap.APIOutputTokens,
-		"context_window":       snap.ContextWindow,
+		"uptime_seconds":            time.Since(s.startTime).Seconds(),
+		"request_count":             snap.Requests,
+		"tokens_saved":              snap.TokensSaved,
+		"compression_ratio":         compressionRatio,
+		"items_compressed":          snap.Compressed,
+		"items_total":               s.sessionStats.TotalItems(),
+		"api_input_tokens":          snap.APIInputTokens,
+		"api_output_tokens":         snap.APIOutputTokens,
+		"context_window":            snap.ContextWindow,
 		"latest_input_tokens":       s.sessionStats.GetLatestAPIInputTokens(),
 		"latest_total_input_tokens": s.sessionStats.GetLatestAPITotalInputTokens(),
 		"paused":                    s.ctrl.paused.Load(),
@@ -136,6 +137,29 @@ func (s *Server) httpCompress(w http.ResponseWriter, r *http.Request) {
 	if len(ids) == 0 {
 		writeHTTPError(w, http.StatusBadRequest, "EMPTY_IDS", "ids must contain at least one non-empty ID")
 		return
+	}
+
+	// Validate: Agent/Task tool results require replacement_text (LLM rewrite).
+	// Bash/Read/Grep/etc without replacement_text are fine (Tier 1 handles them).
+	if len(body.ReplacementText) == 0 || len(body.ReplacementText) < len(ids) {
+		results := s.GetToolResults()
+		toolNameByID := make(map[string]string, len(results))
+		for _, result := range results {
+			toolNameByID[result.ToolUseID] = result.ToolName
+		}
+
+		for _, id := range ids {
+			toolName := toolNameByID[id]
+			if strings.EqualFold(toolName, "Agent") || strings.EqualFold(toolName, "Task") {
+				if _, hasReplacement := body.ReplacementText[id]; !hasReplacement {
+					writeHTTPError(w, http.StatusBadRequest, "AGENT_REQUIRES_REPLACEMENT",
+						fmt.Sprintf("tool result %s is an %s result which requires replacement_text (LLM rewrite). "+
+							"Tier 1 mechanical compression cannot adequately summarize agent/task output. "+
+							"Provide replacement_text for this ID.", id, toolName))
+					return
+				}
+			}
+		}
 	}
 
 	if len(body.ReplacementText) > 0 {
@@ -308,16 +332,16 @@ func (s *Server) SessionStatsJSON() map[string]any {
 	}
 
 	return map[string]any{
-		"uptime_seconds":       s.Uptime().Seconds(),
-		"request_count":        snap.Requests,
-		"compressed":           snap.Compressed,
-		"tokens_saved":         snap.TokensSaved,
-		"compression_ratio":    compressionRatio,
-		"items_compressed":     snap.Compressed,
-		"items_total":          s.sessionStats.TotalItems(),
-		"api_input_tokens":     snap.APIInputTokens,
-		"api_output_tokens":    snap.APIOutputTokens,
-		"context_window":       snap.ContextWindow,
+		"uptime_seconds":            s.Uptime().Seconds(),
+		"request_count":             snap.Requests,
+		"compressed":                snap.Compressed,
+		"tokens_saved":              snap.TokensSaved,
+		"compression_ratio":         compressionRatio,
+		"items_compressed":          snap.Compressed,
+		"items_total":               s.sessionStats.TotalItems(),
+		"api_input_tokens":          snap.APIInputTokens,
+		"api_output_tokens":         snap.APIOutputTokens,
+		"context_window":            snap.ContextWindow,
 		"latest_input_tokens":       s.sessionStats.GetLatestAPIInputTokens(),
 		"latest_total_input_tokens": s.sessionStats.GetLatestAPITotalInputTokens(),
 		"paused":                    s.ctrl.paused.Load(),

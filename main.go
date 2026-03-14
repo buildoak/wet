@@ -11,13 +11,12 @@ import (
 
 const usageText = `Usage:
   wet claude [args...]     # session wrapper (primary)
-  wet status               # live stats from running proxy
+  wet status [--json] [--port PORT|PORT]  # live proxy status
+  wet ps [--all]           # list all running wet proxies
   wet data status          # offline session stats from ~/.wet/sessions
   wet data inspect [--all] # recent compressed items from session.jsonl
   wet data diff <turn>     # inspect one compressed turn in detail
-  wet inspect              # show tombstones
-  wet inspect --live       # show current tool results (agent API)
-  wet inspect --live --format table  # human-readable table
+  wet inspect [--json] [--full] [--port PORT|PORT]  # inspect live tool results
   wet compress --ids id1,id2,id3     # queue selective compression
   wet rules list           # show active rules
   wet rules set KEY VALUE  # tune rule at runtime
@@ -57,28 +56,55 @@ func main() {
 	case "claude":
 		err = cli.RunShim(args[1:])
 	case "status":
-		args = extractPort(args[1:])
-		err = cli.RunStatus()
-	case "inspect":
-		hasLive := false
-		format := "json"
+		jsonOutput := false
 		remaining := extractPort(args[1:])
 		for i := 0; i < len(remaining); i++ {
 			switch remaining[i] {
-			case "--live":
-				hasLive = true
-			case "--format":
-				if i+1 < len(remaining) {
-					format = remaining[i+1]
-					i++
+			case "--json":
+				jsonOutput = true
+			default:
+				// Try as positional port argument
+				if p, perr := strconv.Atoi(remaining[i]); perr == nil {
+					cli.SetPort(p)
 				}
 			}
 		}
-		if hasLive {
-			err = cli.RunInspectResults(format)
-		} else {
-			err = cli.RunInspect()
+		err = cli.RunStatusEnhanced(jsonOutput)
+	case "inspect":
+		jsonOutput := false
+		fullOutput := false
+		remaining := extractPort(args[1:])
+		for i := 0; i < len(remaining); i++ {
+			switch remaining[i] {
+			case "--json":
+				jsonOutput = true
+			case "--full":
+				fullOutput = true
+			case "--live":
+				// backward compat, now default behavior for live inspect
+			case "--format":
+				if i+1 < len(remaining) {
+					if remaining[i+1] == "json" {
+						jsonOutput = true
+					}
+					i++
+				}
+			default:
+				// Try as positional port argument
+				if p, perr := strconv.Atoi(remaining[i]); perr == nil {
+					cli.SetPort(p)
+				}
+			}
 		}
+		err = cli.RunInspectEnhanced(jsonOutput, fullOutput)
+	case "ps":
+		showAll := false
+		for _, arg := range args[1:] {
+			if arg == "--all" || arg == "-a" {
+				showAll = true
+			}
+		}
+		err = cli.RunPS(showAll)
 	case "pause":
 		extractPort(args[1:])
 		err = cli.RunPause()

@@ -86,6 +86,10 @@ func CompressSelected(req *messages.Request, cfg *config.Config, targetIDs []str
 			if tombstoneTokens >= info.TokenCount {
 				continue // tombstone overhead makes this a net loss
 			}
+			// Minimum savings threshold: reject if compressed result is > 60% of original
+			if float64(tombstoneTokens) > 0.6*float64(info.TokenCount) {
+				continue // near-pass-through, not worth the replacement
+			}
 			if err := ReplaceToolResultContent(&req.Messages[info.MsgIdx], info.BlockIdx, tombstone, info.ContentIsStr); err != nil {
 				continue
 			}
@@ -127,6 +131,10 @@ func CompressSelected(req *messages.Request, cfg *config.Config, targetIDs []str
 		tombstoneTokens := messages.EstimateTokens(tombstone)
 		if tombstoneTokens >= info.TokenCount {
 			continue // tombstone overhead makes this a net loss
+		}
+		// Minimum savings threshold: reject if compressed result is > 60% of original
+		if float64(tombstoneTokens) > 0.6*float64(info.TokenCount) {
+			continue // near-pass-through, not worth the replacement
 		}
 		if err := ReplaceToolResultContent(&req.Messages[info.MsgIdx], info.BlockIdx, tombstone, info.ContentIsStr); err != nil {
 			continue

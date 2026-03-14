@@ -290,6 +290,41 @@ func TestHTTPCompressEmptyIDs(t *testing.T) {
 	}
 }
 
+func TestHttpCompress_AgentRequiresReplacement(t *testing.T) {
+	cfg := config.Default()
+	cfg.Server.Upstream = "http://example.com"
+	cfg.Server.Mode = "passthrough"
+	srv := NewWithLogOutput(cfg, nil)
+	t.Cleanup(srv.Shutdown)
+
+	srv.StoreToolResults([]messages.ToolResultInfo{
+		{
+			ToolUseID: "tu_agent",
+			ToolName:  "Agent",
+		},
+	})
+
+	body, _ := json.Marshal(map[string]any{"ids": []string{"tu_agent"}})
+	req := httptest.NewRequest(http.MethodPost, "/_wet/compress", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	srv.httpSrv.Handler.ServeHTTP(rec, req)
+	resp := rec.Result()
+	defer resp.Body.Close()
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+
+	var result map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if result["code"] != "AGENT_REQUIRES_REPLACEMENT" {
+		t.Fatalf("expected code AGENT_REQUIRES_REPLACEMENT, got %q", result["code"])
+	}
+}
+
 func TestHTTPCompressInvalidJSON(t *testing.T) {
 	_, ts := newTestServerWithControl(t)
 
