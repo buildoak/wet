@@ -242,12 +242,6 @@ func (s *Server) handleMessagesWithCompression(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// If paused, forward unchanged
-	if s.IsPaused() {
-		_ = forward(body)
-		return
-	}
-
 	req, err := messages.ParseRequest(body)
 	if err != nil {
 		_ = forward(body)
@@ -307,33 +301,39 @@ func (s *Server) handleMessagesWithCompression(w http.ResponseWriter, r *http.Re
 		mode = "auto"
 	}
 
-	switch mode {
-	case "auto":
-		result = pipeline.CompressRequest(req, reqCfg)
-	}
+	// When paused, skip compression but still flow through accounting,
+	// stats recording, and turn persistence below.
+	paused := s.IsPaused()
 
-	// Apply queued selective compression (from /_wet/compress) for the main
-	// session.  In passthrough mode this is the only compression path; in auto
-	// mode it supplements staleness-based compression so the control plane can
-	// trigger mechanical (Tier 1) compressions on specific IDs.
-	if isMain {
-		targetIDs, replacements := s.DrainCompressState()
-		if len(targetIDs) > 0 {
-			sel := pipeline.CompressSelected(req, reqCfg, targetIDs, replacements)
-			result.TotalToolResults += sel.TotalToolResults
-			result.Compressed += sel.Compressed
-			result.SkippedFresh += sel.SkippedFresh
-			result.SkippedBypass += sel.SkippedBypass
-			result.TokensBefore += sel.TokensBefore
-			result.TokensAfter += sel.TokensAfter
-			result.OverheadMs += sel.OverheadMs
-			result.Items = append(result.Items, sel.Items...)
-			if len(sel.Replacements) > 0 {
-				if result.Replacements == nil {
-					result.Replacements = make(map[string]string, len(sel.Replacements))
-				}
-				for id, tombstone := range sel.Replacements {
-					result.Replacements[id] = tombstone
+	if !paused {
+		switch mode {
+		case "auto":
+			result = pipeline.CompressRequest(req, reqCfg)
+		}
+
+		// Apply queued selective compression (from /_wet/compress) for the main
+		// session.  In passthrough mode this is the only compression path; in auto
+		// mode it supplements staleness-based compression so the control plane can
+		// trigger mechanical (Tier 1) compressions on specific IDs.
+		if isMain {
+			targetIDs, replacements := s.DrainCompressState()
+			if len(targetIDs) > 0 {
+				sel := pipeline.CompressSelected(req, reqCfg, targetIDs, replacements)
+				result.TotalToolResults += sel.TotalToolResults
+				result.Compressed += sel.Compressed
+				result.SkippedFresh += sel.SkippedFresh
+				result.SkippedBypass += sel.SkippedBypass
+				result.TokensBefore += sel.TokensBefore
+				result.TokensAfter += sel.TokensAfter
+				result.OverheadMs += sel.OverheadMs
+				result.Items = append(result.Items, sel.Items...)
+				if len(sel.Replacements) > 0 {
+					if result.Replacements == nil {
+						result.Replacements = make(map[string]string, len(sel.Replacements))
+					}
+					for id, tombstone := range sel.Replacements {
+						result.Replacements[id] = tombstone
+					}
 				}
 			}
 		}
