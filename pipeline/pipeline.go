@@ -77,6 +77,15 @@ func CompressRequest(req *messages.Request, cfg *config.Config) CompressResult {
 			continue
 		}
 
+		// Agent/Task tool results cannot be adequately compressed by Tier 1
+		// mechanical compression. They require explicit replacement text
+		// provided via the control plane (/_wet/compress with replacement_text).
+		// Skip them in auto mode to avoid lossy summarization.
+		if isAgentTaskTool(info.ToolName) {
+			result.SkippedBypass++
+			continue
+		}
+
 		family := messages.ExtractToolFamily(info.ToolName, info.Command)
 		if rule, ok := cfg.Rules[family]; ok && strings.EqualFold(rule.Strategy, "none") {
 			result.SkippedBypass++
@@ -126,6 +135,13 @@ func CompressRequest(req *messages.Request, cfg *config.Config) CompressResult {
 
 	result.OverheadMs = float64(time.Since(start).Microseconds()) / 1000.0
 	return result
+}
+
+// isAgentTaskTool returns true for Agent and Task tool names, which produce
+// complex multi-step output that Tier 1 mechanical compression cannot
+// adequately summarize.
+func isAgentTaskTool(toolName string) bool {
+	return strings.EqualFold(toolName, "Agent") || strings.EqualFold(toolName, "Task")
 }
 
 func truncateStr(s string, maxRunes int) string {
