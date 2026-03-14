@@ -7,8 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/otonashi/wet/config"
-	"github.com/otonashi/wet/messages"
+	"github.com/buildoak/wet/config"
+	"github.com/buildoak/wet/messages"
 )
 
 func newTestServerWithControl(t *testing.T) (*Server, *httptest.Server) {

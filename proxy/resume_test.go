@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/otonashi/wet/config"
-	"github.com/otonashi/wet/persist"
+	"github.com/buildoak/wet/config"
+	"github.com/buildoak/wet/persist"
 )
 
 func TestRestoreResumeStatsSeedsImmediatelyAndAvoidsDoubleSeed(t *testing.T) {

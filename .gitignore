@@ -26,6 +26,7 @@ dist/
 
 # Session data
 *.jsonl
+.wet/
 
 # Internal planning docs (not for public repo)
 PLAN.md

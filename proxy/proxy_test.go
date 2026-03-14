@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/otonashi/wet/config"
+	"github.com/buildoak/wet/config"
 )
 
 func TestHealthEndpoint(t *testing.T) {

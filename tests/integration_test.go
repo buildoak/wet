@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/otonashi/wet/config"
-	"github.com/otonashi/wet/messages"
-	"github.com/otonashi/wet/pipeline"
-	"github.com/otonashi/wet/proxy"
+	"github.com/buildoak/wet/config"
+	"github.com/buildoak/wet/messages"
+	"github.com/buildoak/wet/pipeline"
+	"github.com/buildoak/wet/proxy"
 )
 
 // TestEndToEndProxy verifies the full proxy flow with compression.

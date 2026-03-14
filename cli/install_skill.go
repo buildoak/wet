@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/otonashi/wet/skill"
+	"github.com/buildoak/wet/skill"
 )
 
 const defaultSkillDir = ".claude/skills/wet-compress"

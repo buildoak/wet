@@ -18,11 +18,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/otonashi/wet/config"
-	"github.com/otonashi/wet/messages"
-	"github.com/otonashi/wet/persist"
-	"github.com/otonashi/wet/pipeline"
-	"github.com/otonashi/wet/stats"
+	"github.com/buildoak/wet/config"
+	"github.com/buildoak/wet/messages"
+	"github.com/buildoak/wet/persist"
+	"github.com/buildoak/wet/pipeline"
+	"github.com/buildoak/wet/stats"
 )
 
 type contextKey string
@@ -530,8 +530,8 @@ func (s *Server) RestoreResumeStats() {
 
 func (s *Server) ensurePersistStore(systemHash string) {
 	// Use session UUID as the persistence key when available (stable across
-	// MEMORY.md changes, date changes, skill additions). Fall back to the
-	// system-prompt hash for backwards compatibility.
+	// system-prompt mutations like memory updates, date changes, or skill
+	// additions). Fall back to the system-prompt hash for backwards compat.
 	persistKey := s.sessionUUID
 	if persistKey == "" {
 		persistKey = systemHash

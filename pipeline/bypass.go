@@ -4,8 +4,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/otonashi/wet/config"
-	"github.com/otonashi/wet/messages"
+	"github.com/buildoak/wet/config"
+	"github.com/buildoak/wet/messages"
 )
 
 // ShouldBypass returns true if this tool_result should NOT be compressed.

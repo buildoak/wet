@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/otonashi/wet/pipeline"
+	"github.com/buildoak/wet/pipeline"
 )
 
 func TestRecordRequest(t *testing.T) {

@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/otonashi/wet/config"
+	"github.com/buildoak/wet/config"
 )
 
 func TestSSEUsageInProxy(t *testing.T) {
@@ -111,7 +111,11 @@ func TestSSEUsageWithGzipUpstream(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept-Encoding", "gzip")
 
-	resp, err := http.DefaultClient.Do(req)
+	// Use a fresh client to avoid shared state from http.DefaultClient's
+	// transport pool, which can cause the SSE interceptor to miss events
+	// on cold-start runs.
+	client := &http.Client{}
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("POST failed: %v", err)
 	}

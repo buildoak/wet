@@ -14,7 +14,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/otonashi/wet/stats"
+	"github.com/buildoak/wet/stats"
 )
 
 type FleetEntry struct {

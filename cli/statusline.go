@@ -3,7 +3,7 @@ package cli
 import (
 	"fmt"
 
-	"github.com/otonashi/wet/stats"
+	"github.com/buildoak/wet/stats"
 )
 
 func RunStatusline() error {

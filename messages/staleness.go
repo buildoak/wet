@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/otonashi/wet/config"
+	"github.com/buildoak/wet/config"
 )
 
 // ToolResultInfo holds parsed metadata about a tool_result block.

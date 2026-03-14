@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/otonashi/wet/compressor"
-	"github.com/otonashi/wet/config"
-	"github.com/otonashi/wet/messages"
+	"github.com/buildoak/wet/compressor"
+	"github.com/buildoak/wet/config"
+	"github.com/buildoak/wet/messages"
 )
 
 func TestCompressSelected_MinSavingsThreshold(t *testing.T) {

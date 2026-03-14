@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/otonashi/wet/config"
+	"github.com/buildoak/wet/config"
 )
 
 // inspectResultView is the JSON shape returned by /_wet/inspect.

@@ -4,9 +4,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/otonashi/wet/compressor"
-	"github.com/otonashi/wet/config"
-	"github.com/otonashi/wet/messages"
+	"github.com/buildoak/wet/compressor"
+	"github.com/buildoak/wet/config"
+	"github.com/buildoak/wet/messages"
 )
 
 // CompressSelected runs compression only for tool_result blocks whose tool_use IDs are listed in targetIDs.

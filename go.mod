@@ -1,4 +1,4 @@
-module github.com/otonashi/wet
+module github.com/buildoak/wet
 
 go 1.22
 

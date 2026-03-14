@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/otonashi/wet/config"
+	"github.com/buildoak/wet/config"
 )
 
 func TestClassifyStalenessEmptyMessages(t *testing.T) {

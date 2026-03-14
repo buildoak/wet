@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/otonashi/wet/pipeline"
+	"github.com/buildoak/wet/pipeline"
 )
 
 // SessionStats tracks cumulative stats for the current proxy session.

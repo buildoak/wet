@@ -5,8 +5,10 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/otonashi/wet/cli"
+	"github.com/buildoak/wet/cli"
 )
+
+const Version = "0.1.0"
 
 const usageText = `Usage:
   wet claude [args...]     # session wrapper (primary)
@@ -49,6 +51,9 @@ func main() {
 	var err error
 
 	switch args[0] {
+	case "--version", "-v":
+		fmt.Printf("wet v%s\n", Version)
+		return
 	case "--help", "-h", "help":
 		printUsage(os.Stdout)
 		return

@@ -1,7 +1,6 @@
 ---
 name: wet-compress
 description: CLI-based context compression for Claude Code sessions via wet proxy
-author: R. Jenkins
 version: 0.9.0
 tools: [Bash, Agent]
 triggers:

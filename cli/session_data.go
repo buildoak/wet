@@ -8,7 +8,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/otonashi/wet/persist"
+	"github.com/buildoak/wet/persist"
 )
 
 func findLatestSession() (string, error) {

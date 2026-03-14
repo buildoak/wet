@@ -13,8 +13,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/otonashi/wet/config"
-	"github.com/otonashi/wet/proxy"
+	"github.com/buildoak/wet/config"
+	"github.com/buildoak/wet/proxy"
 )
 
 // ChildExitError wraps a non-zero child process exit code.

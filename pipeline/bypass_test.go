@@ -3,8 +3,8 @@ package pipeline
 import (
 	"testing"
 
-	"github.com/otonashi/wet/config"
-	"github.com/otonashi/wet/messages"
+	"github.com/buildoak/wet/config"
+	"github.com/buildoak/wet/messages"
 )
 
 func TestBypassFreshResult(t *testing.T) {
