@@ -345,19 +345,22 @@ func (s *SessionStats) WriteStatsFile() error {
 	s.mu.Lock()
 	last := s.LastRequest
 	port := s.Port
+	if last == nil {
+		s.mu.Unlock()
+		return nil
+	}
+
+	// Marshal while holding the lock so concurrent RecordAPIUsage calls
+	// cannot mutate LastRequest fields mid-serialize.
+	data, err := json.MarshalIndent(last, "", "  ")
 	s.mu.Unlock()
 
-	if last == nil {
-		return nil
+	if err != nil {
+		return err
 	}
 
 	dir := wetDir()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-
-	data, err := json.MarshalIndent(last, "", "  ")
-	if err != nil {
 		return err
 	}
 
@@ -366,13 +369,29 @@ func (s *SessionStats) WriteStatsFile() error {
 		suffix = fmt.Sprintf("stats-%d.json", port)
 	}
 
-	tmpPath := filepath.Join(dir, suffix+".tmp")
 	finalPath := filepath.Join(dir, suffix)
 
-	if err := os.WriteFile(tmpPath, data, 0o644); err != nil {
-		return err
+	// Use a unique temp file per write to avoid clobbering from concurrent callers.
+	tmpFile, err := os.CreateTemp(dir, suffix+".tmp.*")
+	if err != nil {
+		return fmt.Errorf("create stats temp file: %w", err)
 	}
-	return os.Rename(tmpPath, finalPath)
+	tmpPath := tmpFile.Name()
+
+	if _, err := tmpFile.Write(data); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpPath)
+		return fmt.Errorf("write stats temp file: %w", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("close stats temp file: %w", err)
+	}
+	if err := os.Rename(tmpPath, finalPath); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("rename stats file: %w", err)
+	}
+	return nil
 }
 
 func (s *SessionStats) HealthResponse() HealthResponse {
