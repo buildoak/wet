@@ -54,7 +54,8 @@ Spawn a subagent with this EXACT prompt:
 > **IMPORTANT:** `fill_pct` MUST come from `wet status` (API ground truth), NOT from summing inspect token counts. Inspect tells you what's compressible, not how full the context is.
 >
 > **Classification rules (apply in order):**
-> 1. **PROTECTED** — `is_error == true`, `current_turn - turn <= 3`, `has_images == true`, content contains `[compressed`, token_count < 50, OR any tool with token_count < 250 that isn't AGENT_RETURN/SEARCH/FILE_READ. Never compress. (Tier 1 adds ~20-token tombstone wrapper; items under 250 tokens hit the economic gate — compressed + tombstone ≥ original.)
+> 0. **ALREADY_COMPRESSED** — content_preview contains `[compressed`. These items were compressed in a prior round. Classify as PROTECTED immediately. **Check this FIRST before any other rule.** Subagents that skip this check will send stale IDs to the compressor and get 404s.
+> 1. **PROTECTED** — `is_error == true`, `current_turn - turn <= 3`, `has_images == true`, token_count < 50, OR any tool with token_count < 250 that isn't AGENT_RETURN/SEARCH/FILE_READ. Never compress. (Tier 1 adds ~20-token tombstone wrapper; items under 250 tokens hit the economic gate — compressed + tombstone ≥ original.)
 > 2. **BOOT_READ** — Read of SOUL.md, IDENTITY.md, USER.md, or MEMORY.md. **NEVER_COMPRESS.** SACRED.
 > 3. **MECHANICAL** — tool_name is `Bash` AND token_count ≥ 250. Tier 1 binary has 10 family-specific compressors (git, npm, cargo, pytest, etc.) plus a generic fallback. Deterministic, safe, ~90% savings. No replacement_text needed. Items under 250 tokens → PROTECTED.
 > 4. **AGENT_RETURN** — tool_name is `Agent`, any token_count above 50. Natural-language analysis/summary from subagents. LLM rewrite. ~80% savings.
