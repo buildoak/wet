@@ -339,6 +339,14 @@ func (s *Server) handleMessagesWithCompression(w http.ResponseWriter, r *http.Re
 		}
 	}
 
+	// Ensure TotalToolResults reflects classification even when no compression
+	// path ran (passthrough mode, paused, or no stale items). This prevents
+	// wet status from showing "0/0 items" when the proxy is forwarding without
+	// compressing.
+	if result.TotalToolResults == 0 && len(infos) > 0 {
+		result.TotalToolResults = len(infos)
+	}
+
 	var forwardBody []byte
 	if result.Compressed > 0 || persistedApplied > 0 {
 		forwardBody, err = req.Marshal()
