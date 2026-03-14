@@ -1,0 +1,41 @@
+# Binary
+wet
+*.exe
+
+# Build artifacts
+dist/
+*.tmp
+
+# Go
+.gocache/
+.gotmp/
+
+# Environment
+.env
+.env.*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+
+# Session data
+*.jsonl
+
+# Internal planning docs (not for public repo)
+PLAN.md
+SPEC.md
+V010-SCOPE.md
+.tmp/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code local settings
+.claude/
