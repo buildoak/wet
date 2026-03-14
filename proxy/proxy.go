@@ -228,8 +228,6 @@ func (s *Server) handleMessagesWithCompression(w http.ResponseWriter, r *http.Re
 		}
 		usage = interceptor.Usage()
 		if usage.InputTokens > 0 || usage.OutputTokens > 0 || usage.CacheCreationInputTokens > 0 || usage.CacheReadInputTokens > 0 {
-			s.sessionStats.RecordAPIUsage(usage.InputTokens, usage.OutputTokens, usage.CacheCreationInputTokens, usage.CacheReadInputTokens)
-			_ = s.sessionStats.WriteStatsFile()
 			s.logf("[wet] API usage: input=%d output=%d cache_create=%d cache_read=%d\n",
 				usage.InputTokens, usage.OutputTokens,
 				usage.CacheCreationInputTokens, usage.CacheReadInputTokens)
@@ -380,6 +378,15 @@ func (s *Server) handleMessagesWithCompression(w http.ResponseWriter, r *http.Re
 	_ = s.sessionStats.WriteStatsFile()
 
 	usage := forward(forwardBody)
+
+	// Only record API usage from main session — subagent requests have smaller
+	// contexts and would corrupt latest_total_input_tokens if allowed to overwrite.
+	if isMain {
+		if usage.InputTokens > 0 || usage.OutputTokens > 0 || usage.CacheCreationInputTokens > 0 || usage.CacheReadInputTokens > 0 {
+			s.sessionStats.RecordAPIUsage(usage.InputTokens, usage.OutputTokens, usage.CacheCreationInputTokens, usage.CacheReadInputTokens)
+			_ = s.sessionStats.WriteStatsFile()
+		}
+	}
 
 	// Record API-observed savings when compression was applied this turn
 	if result.Compressed > 0 {
