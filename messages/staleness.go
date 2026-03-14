@@ -89,7 +89,7 @@ func ClassifyStaleness(msgs []Message, threshold int, rules map[string]config.Ru
 				toolFamily := ExtractToolFamily(meta.ToolName, meta.Command)
 
 				staleAfter := threshold
-				if rule, ok := rules[toolFamily]; ok {
+				if rule, ok := rules[toolFamily]; ok && rule.StaleAfter > 0 {
 					staleAfter = rule.StaleAfter
 				}
 

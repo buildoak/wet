@@ -155,7 +155,11 @@ func (s *Server) TagOrMatchMainSession(systemHash string) bool {
 func (s *Server) StoreToolResults(results []messages.ToolResultInfo) {
 	s.ctrl.mu.Lock()
 	defer s.ctrl.mu.Unlock()
-	s.ctrl.lastToolResults = results
+	// Copy the slice so the stored data is fully owned by controlState
+	// and cannot be corrupted if the caller mutates the original slice.
+	copied := make([]messages.ToolResultInfo, len(results))
+	copy(copied, results)
+	s.ctrl.lastToolResults = copied
 }
 
 func (s *Server) GetToolResults() []messages.ToolResultInfo {

@@ -316,12 +316,13 @@ func TestHttpCompress_AgentRequiresReplacement(t *testing.T) {
 		t.Fatalf("expected 400, got %d", rec.Code)
 	}
 
-	var result map[string]string
+	var result map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if result["code"] != "AGENT_REQUIRES_REPLACEMENT" {
-		t.Fatalf("expected code AGENT_REQUIRES_REPLACEMENT, got %q", result["code"])
+	code, _ := result["code"].(string)
+	if code != "AGENT_REQUIRES_REPLACEMENT" {
+		t.Fatalf("expected code AGENT_REQUIRES_REPLACEMENT, got %q", code)
 	}
 }
 

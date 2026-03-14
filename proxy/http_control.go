@@ -42,7 +42,7 @@ func (s *Server) RegisterHTTPControl(mux *http.ServeMux) {
 
 func (s *Server) httpStatus(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeHTTPError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "use GET")
+		writeHTTPErrorWithEndpoint(w, r.URL.Path, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "use GET")
 		return
 	}
 	snap := s.StatusSnapshot()
@@ -73,7 +73,7 @@ func (s *Server) httpStatus(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) httpInspect(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeHTTPError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "use GET")
+		writeHTTPErrorWithEndpoint(w, r.URL.Path, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "use GET")
 		return
 	}
 
@@ -114,7 +114,7 @@ func (s *Server) httpInspect(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) httpCompress(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		writeHTTPError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "use POST")
+		writeHTTPErrorWithEndpoint(w, r.URL.Path, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "use POST")
 		return
 	}
 
@@ -123,7 +123,7 @@ func (s *Server) httpCompress(w http.ResponseWriter, r *http.Request) {
 		ReplacementText map[string]string `json:"replacement_text,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeHTTPError(w, http.StatusBadRequest, "INVALID_JSON", "invalid JSON body")
+		writeHTTPErrorWithEndpoint(w, r.URL.Path, http.StatusBadRequest, "INVALID_JSON", "invalid JSON body")
 		return
 	}
 
@@ -135,13 +135,15 @@ func (s *Server) httpCompress(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if len(ids) == 0 {
-		writeHTTPError(w, http.StatusBadRequest, "EMPTY_IDS", "ids must contain at least one non-empty ID")
+		writeHTTPErrorWithEndpoint(w, r.URL.Path, http.StatusBadRequest, "EMPTY_IDS", "ids must contain at least one non-empty ID")
 		return
 	}
 
 	// Validate: Agent/Task tool results require replacement_text (LLM rewrite).
 	// Bash/Read/Grep/etc without replacement_text are fine (Tier 1 handles them).
-	if len(body.ReplacementText) == 0 || len(body.ReplacementText) < len(ids) {
+	// Always check every requested ID — map length alone is not sufficient because
+	// the caller could supply replacement_text keys that don't match Agent IDs.
+	{
 		results := s.GetToolResults()
 		toolNameByID := make(map[string]string, len(results))
 		for _, result := range results {
@@ -151,8 +153,9 @@ func (s *Server) httpCompress(w http.ResponseWriter, r *http.Request) {
 		for _, id := range ids {
 			toolName := toolNameByID[id]
 			if strings.EqualFold(toolName, "Agent") || strings.EqualFold(toolName, "Task") {
-				if _, hasReplacement := body.ReplacementText[id]; !hasReplacement {
-					writeHTTPError(w, http.StatusBadRequest, "AGENT_REQUIRES_REPLACEMENT",
+				rep, hasReplacement := body.ReplacementText[id]
+				if !hasReplacement || strings.TrimSpace(rep) == "" {
+					writeHTTPErrorWithEndpoint(w, r.URL.Path, http.StatusBadRequest, "AGENT_REQUIRES_REPLACEMENT",
 						fmt.Sprintf("tool result %s is an %s result which requires replacement_text (LLM rewrite). "+
 							"Tier 1 mechanical compression cannot adequately summarize agent/task output. "+
 							"Provide replacement_text for this ID.", id, toolName))
@@ -176,7 +179,7 @@ func (s *Server) httpCompress(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) httpPause(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		writeHTTPError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "use POST")
+		writeHTTPErrorWithEndpoint(w, r.URL.Path, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "use POST")
 		return
 	}
 	s.ctrl.paused.Store(true)
@@ -185,7 +188,7 @@ func (s *Server) httpPause(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) httpResume(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		writeHTTPError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "use POST")
+		writeHTTPErrorWithEndpoint(w, r.URL.Path, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "use POST")
 		return
 	}
 	s.ctrl.paused.Store(false)
@@ -207,11 +210,16 @@ func (s *Server) httpRules(w http.ResponseWriter, r *http.Request) {
 			Strategy   string `json:"strategy,omitempty"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			writeHTTPError(w, http.StatusBadRequest, "INVALID_JSON", "invalid JSON body")
+			writeHTTPErrorWithEndpoint(w, r.URL.Path, http.StatusBadRequest, "INVALID_JSON", "invalid JSON body")
 			return
 		}
 		if body.Key == "" {
-			writeHTTPError(w, http.StatusBadRequest, "MISSING_KEY", "key is required")
+			writeHTTPErrorWithEndpoint(w, r.URL.Path, http.StatusBadRequest, "MISSING_KEY", "key is required")
+			return
+		}
+
+		if body.StaleAfter != nil && *body.StaleAfter < 0 {
+			writeHTTPErrorWithEndpoint(w, r.URL.Path, http.StatusBadRequest, "INVALID_STALE_AFTER", "stale_after must be a positive integer (0 means use global threshold)")
 			return
 		}
 
@@ -228,16 +236,16 @@ func (s *Server) httpRules(w http.ResponseWriter, r *http.Request) {
 		}
 		s.cfg.Rules[body.Key] = rule
 		s.ctrl.mu.Unlock()
-		writeHTTPJSON(w, http.StatusOK, map[string]any{"status": "ok"})
+		writeHTTPJSON(w, http.StatusOK, map[string]any{"status": "ok", "key": body.Key, "rule": rule})
 
 	default:
-		writeHTTPError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "use GET or POST")
+		writeHTTPErrorWithEndpoint(w, r.URL.Path, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "use GET or POST")
 	}
 }
 
 func (s *Server) httpDebugSessions(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeHTTPError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "use GET")
+		writeHTTPErrorWithEndpoint(w, r.URL.Path, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "use GET")
 		return
 	}
 
@@ -290,12 +298,21 @@ func writeHTTPJSON(w http.ResponseWriter, status int, v any) {
 }
 
 func writeHTTPError(w http.ResponseWriter, status int, code, message string) {
+	writeHTTPErrorWithEndpoint(w, "", status, code, message)
+}
+
+func writeHTTPErrorWithEndpoint(w http.ResponseWriter, endpoint string, status int, code, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{
-		"error": message,
-		"code":  code,
-	})
+	resp := map[string]any{
+		"error":       message,
+		"code":        code,
+		"http_status": status,
+	}
+	if endpoint != "" {
+		resp["endpoint"] = endpoint
+	}
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 // Port returns the configured port. Useful for CLI commands to discover the control plane.

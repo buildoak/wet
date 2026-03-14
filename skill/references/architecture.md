@@ -93,6 +93,7 @@ Base URL: `http://localhost:$WET_PORT/_wet/`
   "api_output_tokens": 57,
   "context_window": 200000,
   "latest_input_tokens": 91581,
+  "latest_total_input_tokens": 91581,
   "paused": false,
   "mode": "passthrough"
 }

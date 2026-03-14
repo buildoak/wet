@@ -85,17 +85,18 @@ wet install-statusline
 
 ## How it works (short pipeline, no magic)
 1. Session wrapper starts proxy on a random port, exports `ANTHROPIC_BASE_URL`, then execs `claude`.
-2. Proxy intercepts `POST /v1/messages` and parses the `messages` array.
-3. Each `tool_result` is classified fresh vs stale using turn-distance and per-tool-family thresholds.
-4. Stale results get Tier 1 compression (deterministic, fast).
-5. Wet writes a tombstone, for example:
+2. Proxy starts in **passthrough** mode by default — requests are forwarded unchanged so you can inspect and learn the baseline. Set `mode = "auto"` in `~/.wet/wet.toml` to enable automatic compression.
+3. In `auto` mode, the proxy intercepts `POST /v1/messages` and parses the `messages` array.
+4. Each `tool_result` is classified fresh vs stale using turn-distance and per-tool-family thresholds.
+5. Stale results get Tier 1 compression (deterministic, fast).
+6. Wet writes a tombstone, for example:
 
 ```text
 [compressed: git_status | 3 files modified | turn 4/12 | 847->62 tokens]
 ```
 
-6. Bypass rules skip anything risky or pointless: errors, current-turn results, images, tiny outputs, already-compressed blocks.
-7. Control plane stays live over Unix socket for runtime inspection/tuning.
+7. Bypass rules skip anything risky or pointless: errors, current-turn results, images, tiny outputs, already-compressed blocks.
+8. Control plane stays live over Unix socket for runtime inspection/tuning.
 
 ## CLI Reference (the commands I actually use)
 Session wrapper:
@@ -148,6 +149,7 @@ wet help
 
 ## Configuration (optional, sane defaults)
 - Default config: `~/.wet/wet.toml`
+- Default mode: **passthrough** (no automatic compression). Set `mode = "auto"` under `[server]` to enable.
 - `WET_PORT` tells control commands which running proxy to hit
 - Per-tool-family staleness thresholds are configurable
 - Tier 2 LLM compression exists behind config gates and is disabled by default
@@ -167,7 +169,6 @@ Coming in `v0.2.0+`:
 - Tier 2 LLM compression for agent returns (stubbed now, disabled)
 - Codex CLI support (`wet codex ...`)
 - Homebrew formula (`brew install wet`)
-- `--dry-run` mode
 - Semantic staleness model
 
 ## License

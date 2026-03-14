@@ -47,6 +47,7 @@ type Server struct {
 	ctrl            controlState
 	persistMu       sync.RWMutex
 	persistStore    *persist.Store
+	persistOnce     sync.Once
 	sessionUUID     string // stable session identity from --resume UUID or generated
 	statsRestored   bool
 	logMu           sync.RWMutex
@@ -535,55 +536,57 @@ func (s *Server) ensurePersistStore(systemHash string) {
 		return
 	}
 
-	store, err := persist.Open(persistKey)
-	if err != nil {
-		s.logf("[wet] persistence store error: %v\n", err)
-		return
-	}
-	if store == nil {
-		return
-	}
-	mode := "auto"
-	if s.cfg != nil && s.cfg.Server.Mode != "" {
-		mode = s.cfg.Server.Mode
-	}
-	header := persist.SessionHeader{
-		V:       1,
-		Type:    "header",
-		Session: persistKey,
-		Created: time.Now().UTC().Format(time.RFC3339),
-		Model:   s.sessionStats.Model,
-		Mode:    mode,
-	}
-	if err := store.EnsureHeader(header); err != nil {
-		s.logf("[wet] session.jsonl header error: %v\n", err)
-	}
-
-	s.persistMu.Lock()
-	defer s.persistMu.Unlock()
-	if s.persistStore != nil {
-		return
-	}
-	s.persistStore = store
-	count := len(store.All())
-
-	// Load cumulative stats (lifetime token totals) from disk.
-	cumulative := store.LoadCumulative()
-
-	if !s.statsRestored && (count > 0 || cumulative.ItemsCompressed > 0) {
-		effectiveCount := count
-		if cumulative.ItemsCompressed > count {
-			effectiveCount = cumulative.ItemsCompressed
+	// sync.Once guarantees exactly one goroutine runs the initialization.
+	// Other concurrent callers block until it completes.
+	s.persistOnce.Do(func() {
+		store, err := persist.Open(persistKey)
+		if err != nil {
+			s.logf("[wet] persistence store error: %v\n", err)
+			return
 		}
-		s.logf("[wet] persistence: loaded %d prior compressions for session %s\n", effectiveCount, persistKey)
-		// Seed ctrl.totalCompressed so /_wet/status items_compressed reflects
-		// restored compressions immediately (not just after the next live compression).
-		s.AddCompressedStats(effectiveCount, int(cumulative.TokensBefore-cumulative.TokensAfter))
-		// Seed stats with cumulative token totals so statusline shows real lifetime numbers.
-		if err := s.sessionStats.SeedCumulativeStats(cumulative.TokensBefore, cumulative.TokensAfter, effectiveCount); err != nil {
-			s.logf("[wet] persistence: cumulative stats seed error: %v\n", err)
+		if store == nil {
+			return
 		}
-	}
+		mode := "auto"
+		if s.cfg != nil && s.cfg.Server.Mode != "" {
+			mode = s.cfg.Server.Mode
+		}
+		header := persist.SessionHeader{
+			V:       1,
+			Type:    "header",
+			Session: persistKey,
+			Created: time.Now().UTC().Format(time.RFC3339),
+			Model:   s.sessionStats.Model,
+			Mode:    mode,
+		}
+		if err := store.EnsureHeader(header); err != nil {
+			s.logf("[wet] session.jsonl header error: %v\n", err)
+		}
+
+		s.persistMu.Lock()
+		s.persistStore = store
+		s.persistMu.Unlock()
+
+		count := len(store.All())
+
+		// Load cumulative stats (lifetime token totals) from disk.
+		cumulative := store.LoadCumulative()
+
+		if !s.statsRestored && (count > 0 || cumulative.ItemsCompressed > 0) {
+			effectiveCount := count
+			if cumulative.ItemsCompressed > count {
+				effectiveCount = cumulative.ItemsCompressed
+			}
+			s.logf("[wet] persistence: loaded %d prior compressions for session %s\n", effectiveCount, persistKey)
+			// Seed ctrl.totalCompressed so /_wet/status items_compressed reflects
+			// restored compressions immediately (not just after the next live compression).
+			s.AddCompressedStats(effectiveCount, int(cumulative.TokensBefore-cumulative.TokensAfter))
+			// Seed stats with cumulative token totals so statusline shows real lifetime numbers.
+			if err := s.sessionStats.SeedCumulativeStats(cumulative.TokensBefore, cumulative.TokensAfter, effectiveCount); err != nil {
+				s.logf("[wet] persistence: cumulative stats seed error: %v\n", err)
+			}
+		}
+	})
 }
 
 func countToolUseIDOccurrences(infos []messages.ToolResultInfo) map[string]int {

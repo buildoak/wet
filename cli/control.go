@@ -171,7 +171,21 @@ func RunInspectResults(format string) error {
 	return nil
 }
 
+// ensurePort resolves the port via explicit flag, env var, or fleet discovery.
+// All control-plane commands should call this before issuing HTTP requests.
+func ensurePort() error {
+	port, err := resolvePortOrDiscover()
+	if err != nil {
+		return err
+	}
+	SetPort(port)
+	return nil
+}
+
 func RunRulesList() error {
+	if err := ensurePort(); err != nil {
+		return err
+	}
 	data, err := httpGet("rules")
 	if err != nil {
 		return err
@@ -181,6 +195,9 @@ func RunRulesList() error {
 }
 
 func RunRulesSet(key, value string) error {
+	if err := ensurePort(); err != nil {
+		return err
+	}
 	payload := map[string]any{"key": key}
 	// Try to parse value as int for stale_after
 	if n, err := strconv.Atoi(value); err == nil {
@@ -196,27 +213,10 @@ func RunRulesSet(key, value string) error {
 	return nil
 }
 
-func RunCompress(ids []string) error {
-	cleanIDs := make([]string, 0, len(ids))
-	for _, id := range ids {
-		id = strings.TrimSpace(id)
-		if id != "" {
-			cleanIDs = append(cleanIDs, id)
-		}
-	}
-	if len(cleanIDs) == 0 {
-		return fmt.Errorf("no valid IDs provided")
-	}
-
-	data, err := httpPost("compress", map[string]any{"ids": cleanIDs})
-	if err != nil {
+func RunPause() error {
+	if err := ensurePort(); err != nil {
 		return err
 	}
-	prettyPrint(data)
-	return nil
-}
-
-func RunPause() error {
 	_, err := httpPost("pause", nil)
 	if err != nil {
 		return err
@@ -226,6 +226,9 @@ func RunPause() error {
 }
 
 func RunResume() error {
+	if err := ensurePort(); err != nil {
+		return err
+	}
 	_, err := httpPost("resume", nil)
 	if err != nil {
 		return err

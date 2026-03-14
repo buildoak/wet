@@ -98,6 +98,10 @@ func CompressRequest(req *messages.Request, cfg *config.Config) CompressResult {
 		if tombstoneTokens >= info.TokenCount {
 			continue // tombstone overhead makes this a net loss
 		}
+		// Minimum savings threshold: reject if compressed result is > 60% of original
+		if float64(tombstoneTokens) > 0.6*float64(info.TokenCount) {
+			continue // near-pass-through, not worth the replacement
+		}
 		if err := ReplaceToolResultContent(&req.Messages[info.MsgIdx], info.BlockIdx, tombstone, info.ContentIsStr); err != nil {
 			continue
 		}

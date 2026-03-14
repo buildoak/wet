@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"strings"
 
 	"github.com/otonashi/wet/cli"
 )
@@ -17,7 +16,7 @@ const usageText = `Usage:
   wet data inspect [--all] # recent compressed items from session.jsonl
   wet data diff <turn>     # inspect one compressed turn in detail
   wet inspect [--json] [--full] [--port PORT|PORT]  # inspect live tool results
-  wet compress --ids id1,id2,id3     # queue selective compression
+  wet compress [--ids id1,id2] [--text JSON] [--text-file PATH] [--dry-run] [--json] [--port PORT|PORT]  # selective compression
   wet rules list           # show active rules
   wet rules set KEY VALUE  # tune rule at runtime
   wet pause                # bypass all compression
@@ -128,19 +127,8 @@ func main() {
 	case "data":
 		err = runDataCommand(args[1:])
 	case "compress":
-		var ids []string
 		remaining := extractPort(args[1:])
-		for i := 0; i < len(remaining); i++ {
-			if remaining[i] == "--ids" && i+1 < len(remaining) {
-				ids = strings.Split(remaining[i+1], ",")
-				i++
-			}
-		}
-		if len(ids) == 0 {
-			fmt.Fprintln(os.Stderr, "[wet] error: --ids required. Usage: wet compress --ids id1,id2,id3")
-			os.Exit(1)
-		}
-		err = cli.RunCompress(ids)
+		err = cli.RunCompress(remaining)
 	default:
 		printUsage(os.Stderr)
 		os.Exit(1)
