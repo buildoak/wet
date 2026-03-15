@@ -1,12 +1,28 @@
 # Wet Claude
 
-*Claude Wringing Excess Tokens*
+*Wringing Excess Tokens Claude*
 
 **API proxy for Claude Code — teach your Claude to optimize its own context in a meta-transparent way.**
 
+![wet compression dashboard](assets/images/wet-dashboard.jpg)
+
 Your Claude is running dry. Make it wet.
 
-![wet compression dashboard](assets/images/wet-dashboard.jpg)
+## Why This Exists
+
+Auto compact is brutal. It hits at the worst moments — mid-swarm, mid-experiment — and when it fires, it's all or nothing. Context gets shredded indiscriminately. Important computation goes rogue. Sessions derail. I've had a Mac Mini spiral to 60GB swap from the fallout.
+
+So I audited 20 of my Claude Code sessions. The culprit was obvious: **82% of context bloat is stale tool results** — old `git status` outputs, spent `pytest` runs, massive `grep` dumps you already acted on, 30k-token agent returns you'll never look at again. They sit there, rotting, pushing you toward the autocompact cliff.
+
+The problem: there's no hook to intercept tool results before they enter context. I checked Claude Code, Codex — nothing. I opened a feature request. I forked Codex and wired in my own compression hooks. I tried JSONL manipulation. Too dirty.
+
+Then the insight: **reverse proxy**. A Go shim that sits between Claude Code and `api.anthropic.com`, intercepts every `POST /v1/messages`, and compresses stale tool results in-place before they reach the API. No client patches. No prompt wrappers. Clean.
+
+But deterministic compression alone wasn't enough — it handles Bash outputs well, but agent returns and file reads need semantic understanding. So I flipped the script: instead of just compressing mechanically, **put Claude in the driver's seat**. Let it profile its own context, decide what's stale, and surgically rewrite its own tool results with a Sonnet subagent. Meta-compression — Claude optimizing Claude's context.
+
+The result: instead of autocompact's sledgehammer, you get a scalpel. Sessions that would hit the wall at turn 120 now run past 200 with headroom to spare. Same work, half the noise.
+
+---
 
 82% of context bloat is stale tool results — old `git status` outputs, spent `pytest` runs, logs you already acted on. `wet` compresses them transparently so Claude keeps thinking instead of drowning.
 
