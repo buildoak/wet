@@ -72,25 +72,28 @@ The **skill** is the manual. It teaches Claude the meta game — how to use the 
 
 **3. Process** — execute the plan. Bash outputs get deterministic Tier 1 compression. Agent returns and search results get rewritten by a Sonnet subagent that preserves semantic content while cutting 80-90% of tokens.
 
-Here's what Claude sees when it profiles a session:
+Here's what Claude sees when it profiles a real session (this README was written in it):
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│  Category          Items   Tokens          Saved    Compression    │
-├─────────────────────────────────────────────────────────────────────┤
-│  Bash (Tier 1)       10    9.5k  →  1.0k    8.5k   ██████████░░  │
-│  Agent Returns       20   27.3k  →  3.2k   24.1k   ██████████░░  │
-│  Search (Grep/Glob)   4    2.8k  →  0.5k    2.3k   ██████████░░  │
-├─────────────────────────────────────────────────────────────────────┤
-│  Total               34   39.6k  →  4.7k   35.0k   88% ratio     │
-│                                                                     │
-│  Sacred:      5 boot reads (8.4k tk) — never compressed            │
-│  Protected:  178 items (13.5k tk) — errors, recent, small, done    │
-│  File Reads:  21 items (14.8k tk) — opt-in per file, user decides  │
-└─────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│  Tool             Items    Tokens   Stale   Status                  │
+├──────────────────────────────────────────────────────────────────────┤
+│  Read               13    33.7k    13/13   ██████████████████  80%  │
+│  Agent               6     3.5k     6/6    ████░░░░░░░░░░░░░░   8%  │
+│  Bash               12     3.1k     9/12   ███░░░░░░░░░░░░░░░   7%  │
+│  Grep                2     1.2k     2/2    █░░░░░░░░░░░░░░░░░   3%  │
+│  TaskOutput          1     0.7k     1/1    █░░░░░░░░░░░░░░░░░   2%  │
+│  Edit                6     0.2k     6/6    ░░░░░░░░░░░░░░░░░░  <1%  │
+├──────────────────────────────────────────────────────────────────────┤
+│  Total              40    42.4k    37/40   context fill: 11.5%      │
+│                                                                      │
+│  Sacred:    SOUL, IDENTITY, USER, MEMORY — never compressed          │
+│  Fresh:     3 items (current turn) — protected                       │
+│  Stale:     37 items — compressible                                  │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
-Claude knows what's sacred (boot files, errors, recent turns). It knows what's fair game. It proposes, you approve, it compresses. Or in auto mode - it just handles it.
+Claude sees what's sacred, what's fresh, what's fair game. It proposes a compression plan, you approve, it executes. Or in auto mode - it just handles it.
 
 ---
 
