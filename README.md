@@ -118,6 +118,9 @@ The fastest path: point your Claude at this repo and tell it to install wet. It 
 Manual path:
 
 ```bash
+# Homebrew (recommended)
+brew tap buildoak/tap && brew install wet
+
 # Build from source (requires Go 1.22+)
 git clone https://github.com/buildoak/wet.git
 cd wet && go build -o wet .
@@ -285,7 +288,7 @@ wet rules set min_savings_pct 50        # lower the savings threshold
 | Spec | Value |
 |---|---|
 | Go version | 1.22+ |
-| Dependencies | 1 (`BurntSushi/toml`, vendored) |
+| Dependencies | 0 (TOML parser is `internal/toml`) |
 | Binary size | ~9 MB (arm64) |
 | Runtime dependencies | 0 |
 | Module | `github.com/buildoak/wet` |
@@ -350,7 +353,6 @@ Tested on 30+ sessions. Used daily in production — coordinator sessions managi
 **What's next:**
 - Bring wet's context optimization logic into the Claude Agent SDK — let any SDK-built agent manage its own context
 - Codex CLI support (`wet codex ...`) — same toolbox, different engine
-- Homebrew formula (`brew install wet`)
 - Explore integration with Claude Code's Task subagents — subagent-level context awareness
 - Semantic staleness model — move beyond turn-counting to content-aware freshness
 
