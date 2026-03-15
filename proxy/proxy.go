@@ -78,10 +78,11 @@ func NewWithLogOutput(cfg *config.Config, logOutput io.Writer) *Server {
 		mode = "auto"
 	}
 	sessionStats.Mode = mode
-	// Don't pre-seed context window — leave at 0 until the first request
-	// provides the real model name via RecordModel. The statusline skips
-	// fill% display when context_window is 0, which is better than showing
-	// a wrong 200k default for 1M models.
+	// Seed context window with 1M (most common Claude model window).
+	// The first request will correct this via RecordModel with the actual model.
+	// 1M is a safe default — better than 200k (unknown model fallback) which
+	// causes a misleading 77% fill flash on startup.
+	sessionStats.ContextWindow = 1_000_000
 
 	s := &Server{
 		cfg:          cfg,
