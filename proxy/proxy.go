@@ -78,10 +78,10 @@ func NewWithLogOutput(cfg *config.Config, logOutput io.Writer) *Server {
 		mode = "auto"
 	}
 	sessionStats.Mode = mode
-	// Pre-seed context window with a safe default so the statusline renders
-	// immediately on cold start.  The actual model-specific window size will
-	// overwrite this on the first proxied request via RecordModel.
-	sessionStats.ContextWindow = stats.ModelContextWindow("", cfg.Models.ContextWindows)
+	// Don't pre-seed context window — leave at 0 until the first request
+	// provides the real model name via RecordModel. The statusline skips
+	// fill% display when context_window is 0, which is better than showing
+	// a wrong 200k default for 1M models.
 
 	s := &Server{
 		cfg:          cfg,
