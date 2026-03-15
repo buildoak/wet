@@ -138,7 +138,19 @@ The **skill is not optional**. Without it, wet is just a proxy that counts token
 The **statusline** is customizable — ask Claude to tweak it to your preferences. After install, it shows context health in real time:
 
 ```
+[Opus 4.6 (1M)] (90k/1000k) | wet: 9% (90k/1.0M)
+```
+
+As your session grows, wet tracks what's been compressed:
+
+```
 [Opus 4.6 (1M)] (200k/1000k) | wet: 20% (200k/1.0M) | 19/105 compressed (21.6k->3.0k)
+```
+
+Deep into a session:
+
+```
+[Opus 4.6 (1M)] (350k/1000k) | wet: 35% (350k/1.0M) | 47/230 compressed (89.2k->8.1k)
 ```
 
 Note: the statusline is a best-effort display — it may show stale data during startup or across session resumes. For precise context metrics, use `wet status --json` or `wet inspect --json` — those read live proxy state and are always accurate.
