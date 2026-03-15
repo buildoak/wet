@@ -4,6 +4,8 @@
 
 Your Claude is running dry. Make it wet.
 
+![wet compression dashboard](assets/images/wet-dashboard.jpg)
+
 82% of context bloat is stale tool results — old `git status` outputs, spent `pytest` runs, logs you already acted on. `wet` compresses them transparently so Claude keeps thinking instead of drowning.
 
 ```
