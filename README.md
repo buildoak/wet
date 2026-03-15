@@ -32,15 +32,37 @@ One Go binary, one Claude Code skill. Toolbox and a Manual.
 
 wet is a **toolbox for agents**. It gives Claude (or any agent sitting on top of Claude Code) surgical access to its own context - the ability to see exactly how much each tool result block consumes, profile the entire session's token distribution, and replace any block with either deterministic compression or a meta-aware subagent rewrite.
 
-The **Go proxy** is the toolbox. It sits between Claude Code and the API, intercepts every `POST /v1/messages`, and exposes a control plane:
+The **Go proxy** is the toolbox. It sits between Claude Code and the API, intercepts every `POST /v1/messages`, and exposes a full control plane:
 
-```
-wet status --json          # session-level context profile: fill%, token counts, compressible items
-wet inspect --json         # every tool result block with token count, age, staleness, tool type
-wet compress --ids ...     # surgically replace specific blocks — deterministic or with replacement text
+```bash
+# Launch & observe
+wet claude [args...]                    # start Claude Code through the proxy
+wet ps [--all]                          # list all active wet sessions
+wet status [--json]                     # context profile: fill%, token counts, compressible items
+wet inspect [--json] [--full]           # every tool result block with token count, age, staleness
+
+# Surgical compression
+wet compress --ids id1,id2,...          # replace specific blocks — deterministic or with replacement text
+wet compress --text-file plan.json     # batch replacement with LLM-rewritten content
+wet compress --dry-run --ids ...       # preview what would change without applying
+
+# Runtime control
+wet pause                               # bypass all compression (accounting still runs)
+wet resume                              # re-enable compression
+wet rules list                          # show active compression rules
+wet rules set KEY VALUE                 # tune thresholds at runtime
+
+# Session forensics
+wet session profile --jsonl <PATH>      # context composition analysis from session trace
+wet session salt                        # session self-identification token
+wet data status                         # offline storage stats
+wet data inspect [--all]                # browse persisted compressed items
+wet data diff <turn>                    # what changed at a specific turn
 ```
 
 Each tool result becomes a first-class object. You can see it, measure it, and replace it. Deterministic compression is calibrated on SWE-bench (91.2% ratio across 13,881 outputs, <5ms overhead) and understands 10 tool families natively: `git`, `pytest`, `cargo`, `npm`, `pip`, `docker`, `make`, `ls/find`, and more.
+
+Per-item token counts are estimated from content length (chars/4 heuristic — no external tokenizer dependency). Session-level fill% and savings come from Anthropic's actual token counts in the API response — ground truth, not estimates.
 
 The **skill** is the manual. It teaches Claude the meta game — how to use the toolbox on itself:
 
