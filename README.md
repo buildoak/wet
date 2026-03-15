@@ -8,9 +8,13 @@
 
 Your Claude is running dry. Make it wet.
 
+```bash
+wet claude --dangerously-skip-permissions   # that's it. everything else is automatic.
+```
+
 ## Why This Exists
 
-Auto compact is brutal. It hits at the worst moments — mid-swarm, mid-experiment — and when it fires, it's all or nothing. Context gets shredded indiscriminately. Important computation goes rogue. Sessions derail. I've had a Mac Mini spiral to 60GB swap from the fallout.
+Auto compact is brutal. It hits at the worst moments - mid-swarm, mid-experiment - and when it fires, it's all or nothing. Context gets shredded indiscriminately. Important computation goes rogue. Sessions derail. I've had a Mac Mini spiral to 60GB swap from the fallout.
 
 So I audited thousands of tool calls across my Claude Code sessions. The culprit was obvious: **82% of context bloat is stale tool results** - old `git status` outputs, spent `pytest` runs, massive `grep` dumps you already acted on, 30k-token agent returns you'll never look at again. They sit there, rotting, pushing you toward the autocompact cliff.
 
