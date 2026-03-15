@@ -383,8 +383,10 @@ func (s *Server) handleMessagesWithCompression(w http.ResponseWriter, r *http.Re
 	} else {
 		forwardBody = body
 	}
-	s.sessionStats.RecordRequest(result)
-	_ = s.sessionStats.WriteStatsFile()
+	if isMain {
+		s.sessionStats.RecordRequest(result)
+		_ = s.sessionStats.WriteStatsFile()
+	}
 
 	usage := forward(forwardBody)
 

@@ -399,6 +399,61 @@ func TestMainSessionSamePromptAccepted(t *testing.T) {
 	}
 }
 
+// TestSubagentDoesNotIncrementSessionItemsTotal verifies that requests
+// identified as subagent traffic (different system prompt) do not increment
+// TotalToolResults, which feeds session_items_total in the statusline.
+func TestSubagentDoesNotIncrementSessionItemsTotal(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"msg_x","type":"message"}`))
+	}))
+	defer upstream.Close()
+
+	cfg := config.Default()
+	cfg.Server.Upstream = upstream.URL
+	cfg.Server.Mode = "passthrough"
+	srv := New(cfg)
+	proxyTS := httptest.NewServer(srv.httpSrv.Handler)
+	defer proxyTS.Close()
+
+	makeBody := func(system, toolUseID, resultContent string) string {
+		return fmt.Sprintf(
+			`{"system":%q,"messages":[`+
+				`{"role":"user","content":[{"type":"tool_result","tool_use_id":%q,"content":%q}]}`+
+				`]}`,
+			system, toolUseID, resultContent,
+		)
+	}
+
+	// First request — main session (establishes the system-prompt fingerprint).
+	mainBody := makeBody("You are the main session assistant.", "tu_main_1", "main result")
+	resp, err := http.Post(proxyTS.URL+"/v1/messages", "application/json", strings.NewReader(mainBody))
+	if err != nil {
+		t.Fatalf("main session request: %v", err)
+	}
+	resp.Body.Close()
+
+	mainTotal := srv.sessionStats.TotalToolResults
+	if mainTotal == 0 {
+		t.Fatal("expected TotalToolResults > 0 after main session request")
+	}
+
+	// Second request — subagent with a different system prompt.
+	subBody := makeBody("You are a subagent with a completely different task.", "tu_sub_1", "subagent result")
+	resp, err = http.Post(proxyTS.URL+"/v1/messages", "application/json", strings.NewReader(subBody))
+	if err != nil {
+		t.Fatalf("subagent request: %v", err)
+	}
+	resp.Body.Close()
+
+	afterSubTotal := srv.sessionStats.TotalToolResults
+	if afterSubTotal != mainTotal {
+		t.Fatalf("subagent request changed TotalToolResults: before=%d, after=%d (should be equal)",
+			mainTotal, afterSubTotal)
+	}
+}
+
 func TestFilterPersistableReplacementsSkipsDuplicateIDs(t *testing.T) {
 	in := map[string]string{
 		"dup":  "[compressed: dup]",
