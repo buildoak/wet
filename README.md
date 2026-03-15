@@ -20,7 +20,7 @@ Then the insight: **reverse proxy**. A Go shim that sits between Claude Code and
 
 But deterministic compression alone wasn't enough - it handles Bash outputs well, but agent returns and file reads need semantic understanding. So I flipped the script: instead of just compressing mechanically, **put Claude in the driver's seat**. Let it profile its own context, decide what's stale, and surgically rewrite its own tool results with a Sonnet subagent. Meta-compression - Claude optimizing Claude's context.
 
-The result: instead of autocompact's sledgehammer, you get a scalpel. Sessions that would hit the wall at turn 120 now run past 200 with headroom to spare. Same work, half the noise.
+The result: instead of autocompact's sledgehammer, you get a scalpel. Claude thinks clearer with a lean context. Token savings compound across long sessions. Same work, half the noise.
 
 ---
 
@@ -35,13 +35,17 @@ wet is a **toolbox for agents**. It gives Claude (or any agent sitting on top of
 The **Go proxy** is the toolbox. It sits between Claude Code and the API, intercepts every `POST /v1/messages`, and exposes a full control plane:
 
 ```bash
-# Launch & observe
+# Launch — works with --resume, --dangerously-skip-permissions, or both
 wet claude [args...]                    # start Claude Code through the proxy
+wet claude --resume <session-id>        # resume a previous session through wet
+wet claude --dangerously-skip-permissions  # autonomous mode through wet
+
+# Observe
 wet ps [--all]                          # list all active wet sessions
 wet status [--json]                     # context profile: fill%, token counts, compressible items
 wet inspect [--json] [--full]           # every tool result block with token count, age, staleness
 
-# Surgical compression
+# Surgical compression (port auto-discovered — run from inside the wet session or its subagents)
 wet compress --ids id1,id2,...          # replace specific blocks — deterministic or with replacement text
 wet compress --text-file plan.json     # batch replacement with LLM-rewritten content
 wet compress --dry-run --ids ...       # preview what would change without applying
@@ -60,9 +64,13 @@ wet data inspect [--all]                # browse persisted compressed items
 wet data diff <turn>                    # what changed at a specific turn
 ```
 
+`wet compress` and control commands auto-discover the proxy port via `WET_PORT` env var — no manual port wiring needed. These commands are designed to be called by Claude from inside a wet session (or by its subagents that inherit the environment).
+
 Each tool result becomes a first-class object. You can see it, measure it, and replace it. Deterministic compression is calibrated on SWE-bench (91.2% ratio across 13,881 outputs, <5ms overhead) and understands 10 tool families natively: `git`, `pytest`, `cargo`, `npm`, `pip`, `docker`, `make`, `ls/find`, and more.
 
 Per-item token counts are estimated from content length (chars/4 heuristic — no external tokenizer dependency). Session-level fill% and savings come from Anthropic's actual token counts in the API response — ground truth, not estimates.
+
+**Auto mode and rules.** wet can run fully automatic — `mode = "auto"` in the config makes the proxy compress stale Bash outputs deterministically on every request without Claude lifting a finger. The rules engine controls staleness thresholds per tool family (`wet rules list`, `wet rules set`), minimum savings gates, and bypass conditions. You tune the rules, wet enforces them. See [Configuration](#configuration) for the full config file.
 
 The **skill** is the manual. It teaches Claude the meta game — how to use the toolbox on itself:
 
@@ -95,6 +103,8 @@ Here's what Claude sees when it profiles a real session (this README was written
 
 Claude sees what's sacred, what's fresh, what's fair game. It proposes a compression plan, you approve, it executes. Or in auto mode - it just handles it.
 
+The skill is fully customizable — ask Claude to profile your sessions and adjust the compression strategy to your workflow. My case: the main session is a coordinator managing swarms of agents and agents inside agents, so agent returns are the primary culprit for context pollution. Your case might be different — heavy `grep` usage, large file reads, deep git histories. Tune the skill to match.
+
 ---
 
 ## Quick Start
@@ -104,7 +114,7 @@ The fastest path: point your Claude at this repo and tell it to install wet. It 
 Manual path:
 
 ```bash
-# Build from source
+# Build from source (requires Go 1.22+)
 git clone https://github.com/buildoak/wet.git
 cd wet && go build -o wet .
 sudo mv wet /usr/local/bin/  # or anywhere on your PATH
@@ -121,17 +131,7 @@ wet claude --dangerously-skip-permissions
 
 The **skill is not optional**. Without it, wet is just a proxy that counts tokens. With it, Claude knows how to profile its own context, propose compression plans, and execute them. The proxy is the toolbox - the skill is the manual that makes Claude a self-optimizing agent.
 
-After install, your statusline shows context health in real time:
-
-```
-[Opus 4.6 (1M)] (200k/1000k) | wet: 20% (200k/1.0M) | 19/105 compressed (21.6k->3.0k)
-```
-
----
-
-## The Statusline
-
-Once installed, your Claude Code prompt shows context health in real time:
+The **statusline** is customizable — ask Claude to tweak it to your preferences. After install, it shows context health in real time:
 
 ```
 [Opus 4.6 (1M)] (90k/1000k) | wet: 9% (90k/1.0M)
@@ -140,33 +140,78 @@ Once installed, your Claude Code prompt shows context health in real time:
 As your session grows, wet tracks what's been compressed:
 
 ```
-[Opus 4.6 (1M)] (200k/1000k) | wet: 20% (200k/1.0M) | 19/105 compressed (21.6k→3.0k)
+[Opus 4.6 (1M)] (200k/1000k) | wet: 20% (200k/1.0M) | 19/105 compressed (21.6k->3.0k)
 ```
 
-Deep into a session, wet keeps you below the autocompact cliff:
+Deep into a session:
 
 ```
-[Opus 4.6 (1M)] (350k/1000k) | wet: 35% (350k/1.0M) | 47/230 compressed (89.2k→8.1k)
+[Opus 4.6 (1M)] (350k/1000k) | wet: 35% (350k/1.0M) | 47/230 compressed (89.2k->8.1k)
 ```
+
+Monitor sessions:
+
+```bash
+wet ps              # all active sessions at a glance
+wet status          # context profile for current session
+wet inspect --live  # live dashboard with auto-refresh
+```
+
+wet works with zero config out of the box. For tuning, see [Configuration](#configuration).
 
 ---
 
 ## How It Works
 
-wet sits between Claude Code and `api.anthropic.com`. No client patches. No prompt wrappers. Just a proxy.
-
 ```
-Claude Code ──────► wet proxy (Go) ──────► api.anthropic.com
-                        │
-                   intercepts POST /v1/messages
-                   classifies tool_results: fresh vs stale
-                   compresses stale results in-place
-                   forwards lean payload
-                   streams response unchanged (SSE passthrough)
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          Claude Code                                    │
+│                       (unmodified client)                               │
+└───────────────────────────────┬─────────────────────────────────────────┘
+                                │
+                    ANTHROPIC_BASE_URL=localhost:PORT
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           wet proxy                                     │
+│                                                                         │
+│  ┌────────────────┐    ┌────────────────┐    ┌──────────────────────┐  │
+│  │   Interceptor   │───▶│   Classifier   │───▶│    Compressor        │  │
+│  │                 │    │                │    │                      │  │
+│  │ Catches every   │    │ Each tool      │    │ Tier 1: Deterministic│  │
+│  │ POST /messages  │    │ result scored  │    │ Tier 2: LLM rewrite │  │
+│  │ Parses tool     │    │ for staleness  │    │                      │  │
+│  │ result blocks   │    │ by tool family │    │ Replaces in-place    │  │
+│  │                 │    │ and turn age   │    │ before API call      │  │
+│  └────────────────┘    └────────────────┘    └──────────────────────┘  │
+│                                                                         │
+│  ┌──────────────────────────────────────────────────────────────────┐  │
+│  │                    Control Plane (Unix socket)                    │  │
+│  │  status · inspect · compress · pause · resume · rules            │  │
+│  └──────────────────────────────────────────────────────────────────┘  │
+│                                                                         │
+│  ┌──────────────────────────────────────────────────────────────────┐  │
+│  │                    Persistence Layer                              │  │
+│  │  session data · compression log · stats · statusline feed        │  │
+│  └──────────────────────────────────────────────────────────────────┘  │
+│                                                                         │
+│  ┌──────────────────────────────────────────────────────────────────┐  │
+│  │                    SSE Interceptor                                │  │
+│  │  Reads usage from Anthropic response stream (ground truth)       │  │
+│  │  input_tokens · output_tokens · cache metrics · fill%            │  │
+│  └──────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────┬─────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        api.anthropic.com                                │
+│                     (SSE streaming passthrough)                         │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Tier 1 — Deterministic compression** (<5ms overhead)
-10 tool-family-specific compressors that understand structure:
+### Tier 1 — Deterministic compression
+
+<5ms overhead per request. 10 tool-family-specific compressors that understand output structure. Calibrated on SWE-bench across 13,881 real tool outputs.
 
 | Tool Family | Compression | What it keeps |
 |---|---|---|
@@ -181,169 +226,38 @@ Claude Code ──────► wet proxy (Go) ──────► api.anthr
 | `ls/find` | 84% | Directory structure, file counts |
 | `make/cmake` | 89% | Build targets, errors |
 
-**Tier 2 — LLM-guided rewrite** (optional)
-For agent returns and search results that need semantic compression. Uses the `wet-compress` Claude Code skill. Disabled by default.
+Tier 1 runs in auto mode without any LLM involvement. Pure Go, pure deterministic. The compressors parse output structure, extract what matters, discard the noise.
 
-**Bypass rules** — wet never touches:
-- Current-turn results (still in use)
-- Error outputs (diagnostic value)
-- Images and binary content
-- Outputs under 200 tokens (not worth it)
-- Already-compressed blocks
+### Tier 2 — LLM-guided rewrite
 
----
+This is the meta game. Some tool results can't be compressed deterministically — a 30k-token agent return, a massive file read, a search result dump. Truncating them destroys meaning. So instead of mechanical compression, Claude rewrites them.
 
-## Real Session Data
+The flow: Claude profiles its context via `wet inspect`, identifies heavy blocks that Tier 1 can't handle, and dispatches a Sonnet subagent to rewrite each one. The subagent reads the original content, produces a compressed version that preserves the semantic payload, and wet swaps it in via `wet compress --text-file`.
 
-From a production coding session today:
+The key insight: Claude knows what it needs from that tool result better than any heuristic ever could. It read the original. It knows what decision it made based on it. It knows which parts are still load-bearing and which are noise. When Claude rewrites its own context, it preserves exactly what matters.
 
-| Metric | Value |
-|---|---|
-| Total context | 210k tokens |
-| Tool results | 54k tokens (26% of context) |
-| Items compressed | 34 |
-| Tokens saved | 34.9k |
-| Compression ratio | 88% |
-| Context after | 199k tokens |
-| Autocompact triggered | No |
+After compression, Claude reports feeling "lighter" — same information, less noise, clearer thinking. This isn't anthropomorphization — it's measurable. Response quality stays constant or improves because the signal-to-noise ratio in context goes up. Less irrelevant content means fewer distractions during attention.
 
-Without wet, this session would have hit autocompact around turn 120. With wet, it ran to turn 190+ with headroom to spare.
+### Bypass rules
 
----
-
-## CLI Reference
-
-### Session Management
-
-| Command | What it does |
-|---|---|
-| `wet claude [args...]` | Start Claude Code through the wet proxy |
-| `wet ps` | List all active wet sessions |
-| `wet install-statusline` | Add wet statusline to Claude Code prompt |
-| `wet uninstall-statusline` | Remove wet statusline |
-
-### Live Inspection
-
-| Command | What it does |
-|---|---|
-| `wet status` | Current session stats (fill%, items, savings) |
-| `wet inspect` | Detailed view of all tracked tool results |
-| `wet inspect --live` | Auto-refreshing live view |
-| `wet inspect --live --format table` | Live table format |
-
-### Compression Control
-
-| Command | What it does |
-|---|---|
-| `wet compress --ids id1,id2,...` | Manually compress specific items |
-| `wet pause` | Pause automatic compression |
-| `wet resume` | Resume automatic compression |
-| `wet rules list` | Show current compression rules |
-| `wet rules set KEY VALUE` | Modify a compression rule at runtime |
-
-### Session Data
-
-| Command | What it does |
-|---|---|
-| `wet data status` | Storage stats for session data |
-| `wet data inspect [--all]` | Browse persisted session data |
-| `wet data diff <turn>` | Show what changed at a specific turn |
-| `wet session salt` | Show current session's salt token |
-| `wet session find <SALT>` | Find a session by its salt |
-| `wet session profile --jsonl <PATH>` | Analyze a session's JSONL trace |
-
-### Skill Helpers
-
-| Command | What it does |
-|---|---|
-| `wet install-skill [--dir PATH]` | Install wet-compress skill into Claude Code |
-| `wet uninstall-skill [--dir PATH]` | Remove wet-compress skill |
-
----
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                     Claude Code                         │
-│                  (unmodified client)                     │
-└────────────────────────┬────────────────────────────────┘
-                         │ ANTHROPIC_BASE_URL=localhost:PORT
-                         ▼
-┌─────────────────────────────────────────────────────────┐
-│                      wet proxy                          │
-│                                                         │
-│  ┌──────────┐  ┌──────────────┐  ┌───────────────────┐ │
-│  │ Intercept │──│  Classifier  │──│   Compressor      │ │
-│  │ messages  │  │ fresh/stale  │  │ 10 tool families  │ │
-│  └──────────┘  └──────────────┘  └───────────────────┘ │
-│                                                         │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │          Control Plane (Unix socket)              │   │
-│  │  status · inspect · compress · pause · resume     │   │
-│  └──────────────────────────────────────────────────┘   │
-│                                                         │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │          Persistence Layer                        │   │
-│  │  session data · compression log · stats           │   │
-│  └──────────────────────────────────────────────────┘   │
-└────────────────────────┬────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────┐
-│                 api.anthropic.com                        │
-│              (SSE streaming passthrough)                 │
-└─────────────────────────────────────────────────────────┘
-```
-
----
-
-## Quick Start
-
-**Install:**
-
-```bash
-go install github.com/buildoak/wet@latest
-```
-
-Or build from source:
-
-```bash
-git clone https://github.com/buildoak/wet
-cd wet && go build -o wet .
-```
-
-**Run Claude through wet:**
-
-```bash
-wet claude fix the bug
-```
-
-**Add the statusline:**
-
-```bash
-wet install-statusline
-```
-
-**Monitor a running session:**
-
-```bash
-wet status          # quick stats
-wet inspect --live  # live dashboard
-wet ps              # all sessions
-```
+wet never touches:
+- **Current-turn results** — still in active use
+- **Error outputs** — diagnostic value, never compress
+- **Images and binary content** — not compressible
+- **Outputs under 200 tokens** — overhead not worth it
+- **Already-compressed blocks** — no double compression
 
 ---
 
 ## Configuration
 
-wet works with zero config. For tuning:
+wet works with zero config. For tuning, create `~/.wet/wet.toml`:
 
 ```toml
-# ~/.wet/wet.toml
-
 [server]
 mode = "auto"              # "passthrough" (default) or "auto"
+                           # passthrough: proxy only, compression via skill/CLI
+                           # auto: deterministic Bash compression on every request
 
 [staleness]
 default_turns = 3          # turns before a result is considered stale
@@ -354,42 +268,85 @@ pytest_turns = 1           # test output is stale immediately after acting on it
 enabled = false            # LLM-guided compression (requires wet-compress skill)
 ```
 
-- **Go version:** 1.22
-- **Dependencies:** 1 (`BurntSushi/toml`, vendored)
-- **Binary size:** 9.3 MB (arm64)
-- **Module:** `github.com/buildoak/wet`
+Runtime tuning without restart:
 
----
+```bash
+wet rules list                          # see all active rules
+wet rules set default_turns 2           # make results go stale faster
+wet rules set min_savings_pct 50        # lower the savings threshold
+```
 
-## Key Numbers
-
-| Metric | Value |
+| Spec | Value |
 |---|---|
-| Tier 1 overhead | <5ms per request |
-| SWE-bench average compression | 91.2% (13,881 outputs) |
-| E2E test #1 | 73.7% compression (42,678 chars saved) |
-| E2E test #2 | 57.7% compression (12,484 tokens saved) |
-| Tests passing | 125 across 8 packages |
+| Go version | 1.22+ |
+| Dependencies | 1 (`BurntSushi/toml`, vendored) |
+| Binary size | ~9 MB (arm64) |
 | Runtime dependencies | 0 |
+| Module | `github.com/buildoak/wet` |
 
 ---
 
-## Status
+## CLI Reference
 
-Alpha. Dogfooded daily.
+### Session Management
 
-**Shipping now:**
-- Tier 1 deterministic compression (10 tool families)
-- Full CLI with live inspection
-- Statusline integration
-- Session persistence and profiling
-- 125 tests, 2 E2E integration tests
+| Command | What it does |
+|---|---|
+| `wet claude [args...]` | Start Claude Code through the wet proxy |
+| `wet ps [--all]` | List all active wet sessions |
+| `wet install-statusline` | Add wet statusline to Claude Code prompt |
+| `wet uninstall-statusline` | Remove wet statusline |
 
-**Coming in v0.2.0+:**
-- Tier 2 LLM compression for agent returns
-- Codex CLI support (`wet codex ...`)
+### Live Inspection
+
+| Command | What it does |
+|---|---|
+| `wet status [--json]` | Current session stats (fill%, items, savings) |
+| `wet inspect [--json] [--full]` | Detailed view of all tracked tool results |
+| `wet inspect --live` | Auto-refreshing live view |
+
+### Compression Control
+
+| Command | What it does |
+|---|---|
+| `wet compress --ids id1,id2,...` | Compress specific items |
+| `wet compress --text-file plan.json` | Batch replacement with custom text |
+| `wet compress --dry-run --ids ...` | Preview without applying |
+| `wet pause` | Bypass all compression |
+| `wet resume` | Re-enable compression |
+| `wet rules list` | Show active compression rules |
+| `wet rules set KEY VALUE` | Modify a compression rule at runtime |
+
+### Session Data
+
+| Command | What it does |
+|---|---|
+| `wet session profile --jsonl <PATH>` | Context composition analysis |
+| `wet session salt` | Session self-identification token |
+| `wet session find <SALT>` | Find session by salt |
+| `wet data status` | Storage stats for session data |
+| `wet data inspect [--all]` | Browse persisted compressed items |
+| `wet data diff <turn>` | What changed at a specific turn |
+
+### Skill Helpers
+
+| Command | What it does |
+|---|---|
+| `wet install-skill [--dir PATH]` | Install wet-compress skill into Claude Code |
+| `wet uninstall-skill [--dir PATH]` | Remove wet-compress skill |
+
+---
+
+## Roadmap
+
+Tested on 30+ sessions. Used daily in production — coordinator sessions managing agent swarms, deep coding sessions, multi-hour research runs.
+
+**What's next:**
+- Bring wet's context optimization logic into the Claude Agent SDK — let any SDK-built agent manage its own context
+- Codex CLI support (`wet codex ...`) — same toolbox, different engine
 - Homebrew formula (`brew install wet`)
-- Semantic staleness model
+- Explore integration with Claude Code's Task subagents — subagent-level context awareness
+- Semantic staleness model — move beyond turn-counting to content-aware freshness
 
 ---
 
