@@ -9,7 +9,12 @@ import (
 	"github.com/buildoak/wet/cli"
 )
 
-const Version = "0.1.0"
+// Overridden by goreleaser ldflags at build time.
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
 
 const usageText = `Usage:
   wet claude [args...]     # session wrapper (primary)
@@ -53,7 +58,7 @@ func main() {
 
 	switch args[0] {
 	case "--version", "-v":
-		fmt.Printf("wet v%s\n", Version)
+		fmt.Printf("wet v%s (%s, %s)\n", version, commit, date)
 		return
 	case "--help", "-h", "help":
 		printUsage(os.Stdout)
