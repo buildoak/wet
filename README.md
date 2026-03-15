@@ -9,7 +9,7 @@
 Your Claude is running dry. Make it wet.
 
 ```bash
-wet claude --dangerously-skip-permissions   # that's it. everything else is automatic.
+wet claude --dangerously-skip-permissions   # Claude takes it from here.
 ```
 
 ## Why This Exists
