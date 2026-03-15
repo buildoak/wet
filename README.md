@@ -26,25 +26,29 @@ The result: instead of autocompact's sledgehammer, you get a scalpel. Sessions t
 
 ## What It Is
 
-Two components. One Go binary, one Claude Code skill. They work together.
+*Put Claude in the driver's seat for context optimization.*
 
-The **proxy** sits between Claude Code and the API. It sees every tool result, tracks staleness, and can deterministically compress Bash outputs in-place at <5ms overhead. Zero quality loss - it understands `git`, `pytest`, `cargo`, `npm`, `docker`, and 10 tool families natively.
+One Go binary, one Claude Code skill. Toolbox and a Manual.
 
-The **skill** is where it gets interesting. It teaches Claude to play the meta game:
+wet is a **toolbox for agents**. It gives Claude (or any agent sitting on top of Claude Code) surgical access to its own context - the ability to see exactly how much each tool result block consumes, profile the entire session's token distribution, and replace any block with either deterministic compression or a meta-aware subagent rewrite.
+
+The **Go proxy** is the toolbox. It sits between Claude Code and the API, intercepts every `POST /v1/messages`, and exposes a control plane:
 
 ```
-wet status --json          # Claude profiles its own context
-wet inspect --json         # Claude sees every tool result with token counts
-wet compress --ids ...     # Claude surgically replaces what it chooses
+wet status --json          # session-level context profile: fill%, token counts, compressible items
+wet inspect --json         # every tool result block with token count, age, staleness, tool type
+wet compress --ids ...     # surgically replace specific blocks — deterministic or with replacement text
 ```
 
-The workflow:
+Each tool result becomes a first-class object. You can see it, measure it, and replace it. Deterministic compression is calibrated on SWE-bench (91.2% ratio across 13,881 outputs, <5ms overhead) and understands 10 tool families natively: `git`, `pytest`, `cargo`, `npm`, `pip`, `docker`, `make`, `ls/find`, and more.
 
-**1. Profile** - Claude runs `wet status`, sees the context fill, token distribution, what's compressible.
+The **skill** is the manual. It teaches Claude the meta game — how to use the toolbox on itself:
 
-**2. Propose** - Claude inspects individual tool results, classifies them (mechanical Bash compression vs LLM-guided rewrite for agent returns and file reads), builds a compression plan with expected savings.
+**1. Profile** — run `wet status`, see context fill, token distribution, what's compressible vs sacred.
 
-**3. Process** - Claude executes the plan. Bash outputs get deterministic compression. Agent returns and search results get rewritten by a Sonnet subagent that preserves semantic content while cutting 80-90% of tokens.
+**2. Propose** — inspect individual blocks, classify each one (mechanical Bash compression vs LLM-guided rewrite for agent returns and file reads), build a compression plan with expected savings.
+
+**3. Process** — execute the plan. Bash outputs get deterministic Tier 1 compression. Agent returns and search results get rewritten by a Sonnet subagent that preserves semantic content while cutting 80-90% of tokens.
 
 Here's what Claude sees when it profiles a session:
 
