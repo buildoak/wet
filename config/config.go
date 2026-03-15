@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/BurntSushi/toml"
+	"github.com/buildoak/wet/internal/toml"
 )
 
 type Config struct {
