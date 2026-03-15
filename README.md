@@ -12,27 +12,59 @@ Your Claude is running dry. Make it wet.
 
 Auto compact is brutal. It hits at the worst moments — mid-swarm, mid-experiment — and when it fires, it's all or nothing. Context gets shredded indiscriminately. Important computation goes rogue. Sessions derail. I've had a Mac Mini spiral to 60GB swap from the fallout.
 
-So I audited 20 of my Claude Code sessions. The culprit was obvious: **82% of context bloat is stale tool results** — old `git status` outputs, spent `pytest` runs, massive `grep` dumps you already acted on, 30k-token agent returns you'll never look at again. They sit there, rotting, pushing you toward the autocompact cliff.
+So I audited thousands of tool calls across my Claude Code sessions. The culprit was obvious: **82% of context bloat is stale tool results** - old `git status` outputs, spent `pytest` runs, massive `grep` dumps you already acted on, 30k-token agent returns you'll never look at again. They sit there, rotting, pushing you toward the autocompact cliff.
 
-The problem: there's no hook to intercept tool results before they enter context. I checked Claude Code, Codex — nothing. I opened a feature request. I forked Codex and wired in my own compression hooks. I tried JSONL manipulation. Too dirty.
+The problem: there's no hook to intercept tool results before they enter context. I checked Claude Code, Codex - nothing. [Opened a feature request](https://github.com/anthropics/claude-code/issues/32105). I forked Codex and wired in my own compression hooks. I tried JSONL manipulation. Too dirty.
 
 Then the insight: **reverse proxy**. A Go shim that sits between Claude Code and `api.anthropic.com`, intercepts every `POST /v1/messages`, and compresses stale tool results in-place before they reach the API. No client patches. No prompt wrappers. Clean.
 
-But deterministic compression alone wasn't enough — it handles Bash outputs well, but agent returns and file reads need semantic understanding. So I flipped the script: instead of just compressing mechanically, **put Claude in the driver's seat**. Let it profile its own context, decide what's stale, and surgically rewrite its own tool results with a Sonnet subagent. Meta-compression — Claude optimizing Claude's context.
+But deterministic compression alone wasn't enough - it handles Bash outputs well, but agent returns and file reads need semantic understanding. So I flipped the script: instead of just compressing mechanically, **put Claude in the driver's seat**. Let it profile its own context, decide what's stale, and surgically rewrite its own tool results with a Sonnet subagent. Meta-compression - Claude optimizing Claude's context.
 
 The result: instead of autocompact's sledgehammer, you get a scalpel. Sessions that would hit the wall at turn 120 now run past 200 with headroom to spare. Same work, half the noise.
 
 ---
 
-82% of context bloat is stale tool results — old `git status` outputs, spent `pytest` runs, logs you already acted on. `wet` compresses them transparently so Claude keeps thinking instead of drowning.
+## What It Is
+
+Two components. One Go binary, one Claude Code skill. They work together.
+
+The **proxy** sits between Claude Code and the API. It sees every tool result, tracks staleness, and can deterministically compress Bash outputs in-place at <5ms overhead. Zero quality loss - it understands `git`, `pytest`, `cargo`, `npm`, `docker`, and 10 tool families natively.
+
+The **skill** is where it gets interesting. It teaches Claude to play the meta game:
 
 ```
-go install github.com/buildoak/wet@latest
-wet install-statusline
-wet claude "fix the auth bug"
+wet status --json          # Claude profiles its own context
+wet inspect --json         # Claude sees every tool result with token counts
+wet compress --ids ...     # Claude surgically replaces what it chooses
 ```
 
-That's it. Everything else is automatic.
+The workflow:
+
+**1. Profile** - Claude runs `wet status`, sees the context fill, token distribution, what's compressible.
+
+**2. Propose** - Claude inspects individual tool results, classifies them (mechanical Bash compression vs LLM-guided rewrite for agent returns and file reads), builds a compression plan with expected savings.
+
+**3. Process** - Claude executes the plan. Bash outputs get deterministic compression. Agent returns and search results get rewritten by a Sonnet subagent that preserves semantic content while cutting 80-90% of tokens.
+
+Here's what Claude sees when it profiles a session:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  Category          Items   Tokens          Saved    Compression    │
+├─────────────────────────────────────────────────────────────────────┤
+│  Bash (Tier 1)       10    9.5k  →  1.0k    8.5k   ██████████░░  │
+│  Agent Returns       20   27.3k  →  3.2k   24.1k   ██████████░░  │
+│  Search (Grep/Glob)   4    2.8k  →  0.5k    2.3k   ██████████░░  │
+├─────────────────────────────────────────────────────────────────────┤
+│  Total               34   39.6k  →  4.7k   35.0k   88% ratio     │
+│                                                                     │
+│  Sacred:      5 boot reads (8.4k tk) — never compressed            │
+│  Protected:  178 items (13.5k tk) — errors, recent, small, done    │
+│  File Reads:  21 items (14.8k tk) — opt-in per file, user decides  │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+Claude knows what's sacred (boot files, errors, recent turns). It knows what's fair game. It proposes, you approve, it compresses. Or in auto mode - it just handles it.
 
 ---
 
