@@ -126,7 +126,22 @@ func TestSSEUsageWithGzipUpstream(t *testing.T) {
 		t.Fatalf("read response: %v", err)
 	}
 
-	snap := srv.StatusSnapshot()
+	// The HTTP response body is fully received by the client before the
+	// server-side handler finishes recording API usage stats (the handler
+	// writes the response via the reverse proxy, then extracts SSE usage
+	// and records it — but the client's io.ReadAll returns as soon as the
+	// response body is complete, not when the handler returns). Poll with
+	// a short timeout to let the handler finish.
+	var snap StatusSnapshot
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		snap = srv.StatusSnapshot()
+		if snap.APIInputTokens > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
 	snapJSON, _ := json.MarshalIndent(snap, "", "  ")
 	t.Logf("StatusSnapshot: %s", snapJSON)
 
