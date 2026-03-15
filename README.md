@@ -97,6 +97,38 @@ Claude sees what's sacred, what's fresh, what's fair game. It proposes a compres
 
 ---
 
+## Quick Start
+
+The fastest path: point your Claude at this repo and tell it to install wet. It will read the skill, build the binary, wire the statusline, and configure itself. That's the whole point - wet is built for agents to set up and operate.
+
+Manual path:
+
+```bash
+# Build from source
+git clone https://github.com/buildoak/wet.git
+cd wet && go build -o wet .
+sudo mv wet /usr/local/bin/  # or anywhere on your PATH
+
+# Install the skill — this is what teaches Claude the meta game
+wet install-skill
+
+# Wire the statusline into Claude Code
+wet install-statusline
+
+# Launch Claude through wet
+wet claude --dangerously-skip-permissions
+```
+
+The **skill is not optional**. Without it, wet is just a proxy that counts tokens. With it, Claude knows how to profile its own context, propose compression plans, and execute them. The proxy is the toolbox - the skill is the manual that makes Claude a self-optimizing agent.
+
+After install, your statusline shows context health in real time:
+
+```
+[Opus 4.6 (1M)] (200k/1000k) | wet: 20% (200k/1.0M) | 19/105 compressed (21.6k->3.0k)
+```
+
+---
+
 ## The Statusline
 
 Once installed, your Claude Code prompt shows context health in real time:
