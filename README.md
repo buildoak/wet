@@ -1,6 +1,8 @@
-# wet — Wringing Excess Tokens
+# Wet Claude
 
-**A transparent API proxy for Claude Code that compresses stale tool results, extending your context runway.**
+*Claude Wringing Excess Tokens*
+
+**API proxy for Claude Code — teach your Claude to optimize its own context in a meta-transparent way.**
 
 Your Claude is running dry. Make it wet.
 
