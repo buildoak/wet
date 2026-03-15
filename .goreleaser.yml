@@ -44,6 +44,7 @@ brews:
   - repository:
       owner: buildoak
       name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     name: wet
     homepage: "https://github.com/buildoak/wet"
     description: "Context compression proxy for Claude Code"
