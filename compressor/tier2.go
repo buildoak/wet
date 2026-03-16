@@ -62,7 +62,7 @@ func Tier2Compress(ctx context.Context, content string, cfg Tier2Config) (string
 
 	model := cfg.Model
 	if model == "" {
-		model = "claude-haiku-3"
+		model = "claude-sonnet-4-6-20250514"
 	}
 
 	prompt := fmt.Sprintf(tier2PromptTemplate, content)

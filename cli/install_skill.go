@@ -17,6 +17,7 @@ var skillFiles = []string{
 	"SKILL.md",
 	"references/architecture.md",
 	"references/heuristics.md",
+	"references/onboarding.md",
 }
 
 // RunInstallSkill writes embedded skill files to the target directory.

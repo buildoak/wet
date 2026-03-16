@@ -107,7 +107,7 @@ Here's what Claude sees when it profiles a real session (this README was written
 
 Claude sees what's sacred, what's fresh, what's fair game. It proposes a compression plan, you approve, it executes. Or in auto mode - it just handles it.
 
-The skill is fully customizable — ask Claude to profile your sessions and adjust the compression strategy to your workflow. My case: the main session is a coordinator managing swarms of agents and agents inside agents, so agent returns are the primary culprit for context pollution. Your case might be different — heavy `grep` usage, large file reads, deep git histories. Tune the skill to match.
+The skill is fully customizable — ask Claude to profile your sessions and adjust the compression strategy to your workflow. My case: the main session is a coordinator managing swarms of agents and agents inside agents, so agent returns are the primary culprit for context pollution. Your case might be different — heavy `grep` usage, large file reads, deep git histories. Tune the skill to match. The heuristics that drive what gets compressed and what stays sacred live in `skill/references/heuristics.md` — edit it to match your setup.
 
 ---
 
@@ -253,7 +253,7 @@ wet never touches:
 - **Current-turn results** — still in active use
 - **Error outputs** — diagnostic value, never compress
 - **Images and binary content** — not compressible
-- **Outputs under 200 tokens** — overhead not worth it
+- **Outputs under 100 tokens** — overhead not worth it
 - **Already-compressed blocks** — no double compression
 
 ### Known behaviors
@@ -270,7 +270,7 @@ wet works with zero config. For tuning, create `~/.wet/wet.toml`:
 
 ```toml
 [server]
-mode = "auto"              # "passthrough" (default) or "auto"
+mode = "passthrough"       # "passthrough" (default) or "auto"
                            # passthrough: proxy only, compression via skill/CLI
                            # auto: deterministic Bash compression on every request
 

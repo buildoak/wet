@@ -30,7 +30,7 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Compression.Tier2.Enabled {
 		t.Fatal("tier2 should be disabled by default")
 	}
-	if cfg.Compression.Tier2.Model != "claude-haiku-3" {
+	if cfg.Compression.Tier2.Model != "claude-sonnet-4-6-20250514" {
 		t.Fatalf("unexpected tier2 model: %s", cfg.Compression.Tier2.Model)
 	}
 	if !cfg.Bypass.PreserveErrors {

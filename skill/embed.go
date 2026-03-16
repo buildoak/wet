@@ -2,5 +2,5 @@ package skill
 
 import "embed"
 
-//go:embed SKILL.md references/architecture.md references/heuristics.md
+//go:embed SKILL.md references/architecture.md references/heuristics.md references/onboarding.md
 var FS embed.FS

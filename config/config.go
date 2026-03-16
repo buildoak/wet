@@ -82,7 +82,7 @@ func Default() *Config {
 			},
 			Tier2: Tier2Config{
 				Enabled:   false,
-				Model:     "claude-haiku-3",
+				Model:     "claude-sonnet-4-6-20250514",
 				MinTokens: 500,
 				TimeoutMs: 2000,
 			},
