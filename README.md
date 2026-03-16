@@ -4,6 +4,8 @@
 
 **API proxy for Claude Code — teach your Claude to optimize its own context in a meta-transparent way.**
 
+![wet demo](https://raw.githubusercontent.com/buildoak/wet/main/assets/demo.webp)
+
 ![wet compression dashboard](assets/images/wet-dashboard.jpg)
 
 Your Claude is running dry. Make it wet.
