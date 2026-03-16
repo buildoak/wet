@@ -145,9 +145,9 @@ Phase 1 (Health Check) produces a context health assessment before heuristics ar
 
 | Health Status | Context % | Heuristic Adjustment |
 |---------------|-----------|---------------------|
-| healthy | < 30% | **STOP.** Compression not needed — don't waste subagent budget |
-| growing | 30-60% | Standard thresholds. Compression is optional but recommended if large targets exist |
-| heavy | 60-80% | Lower the "Large stale results" token threshold from 2000 to 1000. Compress CONDITIONAL items more aggressively (prefer compress over protect when in doubt) |
-| critical | > 80% | Lower all turn_age thresholds by 2 (e.g., fresh protection becomes turn_age <= 1, git commands compress at > 3). Compress CONDITIONAL items unless there is a strong protect signal. The goal is maximum reclamation |
+| light | < 10% | Compression optional. Proceed only on explicit user request |
+| accruing | 10-30% | Standard thresholds. Proactive compression recommended — stale results degrade signal quality regardless of fill level |
+| growing | 30-60% | Lower the "Large stale results" token threshold from 2000 to 1000. Compress CONDITIONAL items more aggressively (prefer compress over protect when in doubt) |
+| heavy | > 60% | Lower all turn_age thresholds by 2 (e.g., fresh protection becomes turn_age <= 1, git commands compress at > 3). Compress CONDITIONAL items unless there is a strong protect signal. Maximum reclamation |
 
 These adjustments are guidelines, not overrides of hard-protect rules. Error results, boot reads, and pinned results remain unconditionally protected regardless of context pressure.

@@ -34,10 +34,10 @@ If wet is not running, the command will error. Tell the user and STOP.
 
 Report: mode, fill%, request_count, tokens_saved.
 
-- **< 30%** → "Context healthy. Compression not needed." **STOP.**
-- **30-60%** → "Context growing. Compression available."
-- **60-80%** → "Context heavy. Compression recommended."
-- **> 80%** → "Context critical. Compression strongly recommended."
+- **< 10%** → "Context light. Compression optional — proceed only if user explicitly requests."
+- **10-30%** → "Context accruing. Proactive compression recommended for clarity and economy." Proceed to Phase 2.
+- **30-60%** → "Context growing. Compression recommended." Proceed to Phase 2.
+- **> 60%** → "Context heavy. Compress now." Proceed to Phase 2.
 
 ---
 
@@ -148,6 +148,24 @@ Bars: 20 chars wide, `█`/`░`, scaled to largest category.
 - **include files** → Move all FILE_READs to summarize list, re-present.
 
 Delete = "unread": minimal tombstone `[deleted: file_read | removed by user]`, no summary.
+
+---
+
+## Phase 3.5 — Batching (main session, before subagent dispatch)
+
+If Phase 2 profiling shows **15+ LLM-rewrite items** (AGENT_RETURN + SEARCH + opted-in FILE_READ combined), split into sequential batches before entering Phase 4.
+
+**Batch rules:**
+- **Mechanical IDs** (Tier 1: bash, grep, glob, ls): Always one batch, unlimited count. No LLM cost, instant.
+- **LLM-rewrite IDs** (Tier 2+): Split into batches of **10-12 items** each. Order by token_count descending (biggest savings first).
+- **Delete IDs** (tombstones): Always one batch, unlimited count.
+
+**Execution:** For each LLM-rewrite batch, spawn a **separate Sonnet 4.6 subagent** with ONLY that batch's IDs. Each subagent runs to completion before the next batch fires. Sequential, not parallel — parallel subagents compete for the same inspect/compress endpoints.
+
+**Subagent prompt adjustment:** Replace the full ID list with batch-scoped IDs:
+> "You are processing batch N of M. Your IDs: «BATCH_N_IDS». Compress these only. Report count and token savings when done."
+
+**If < 15 LLM-rewrite items:** Skip batching, proceed to Phase 4 as normal (single subagent handles all).
 
 ---
 
