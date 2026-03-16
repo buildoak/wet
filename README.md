@@ -260,7 +260,7 @@ wet never touches:
 
 **ToolSearch / deferred tool loading.** Setting `ANTHROPIC_BASE_URL` to a non-first-party host (as wet requires) causes Claude Code to load all tool schemas eagerly instead of deferring them on demand. This adds ~5-10K tokens to the base prompt, under 1% of the context window. No features are lost.
 
-An `ENABLE_TOOL_SEARCH` env var exists to restore deferred loading, but it adds identifiable headers to API requests and fires telemetry that specifically tracks external overrides of this flag. A `DISABLE_TELEMETRY` env var suppresses some signals but not the API-level headers. The token overhead from eager loading is negligible. Neither flag is recommended.
+An `ENABLE_TOOL_SEARCH` env var exists to restore deferred loading. While functional, it adds identifiable signals to API requests that flag your setup as externally modified. This is unnecessary and could be misread by Anthropic as an attempt to circumvent client protections. The token overhead from eager loading is under 1% of context. Accept the overhead, skip the flag.
 
 ---
 
