@@ -256,6 +256,18 @@ wet never touches:
 - **Outputs under 200 tokens** — overhead not worth it
 - **Already-compressed blocks** — no double compression
 
+### Known behaviors
+
+**ToolSearch / deferred tool loading.** When `ANTHROPIC_BASE_URL` points to a non-first-party host (like wet's localhost proxy), Claude Code disables deferred tool loading (ToolSearch). All tool schemas load eagerly instead of on-demand. Functional, but wastes tokens on unused tool schemas.
+
+Fix: set `ENABLE_TOOL_SEARCH=true` in the environment:
+
+```bash
+ENABLE_TOOL_SEARCH=true wet claude
+```
+
+Verified empirically: bare `claude` shows 17 deferred tools, `wet claude` shows none, `ENABLE_TOOL_SEARCH=true wet claude` restores all 17.
+
 ---
 
 ## Configuration
