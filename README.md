@@ -6,8 +6,6 @@
 
 ![wet demo](https://raw.githubusercontent.com/buildoak/wet/main/assets/demo.webp)
 
-![wet compression dashboard](assets/images/wet-dashboard.jpg)
-
 Your Claude is running dry. Make it wet.
 
 ```bash
