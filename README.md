@@ -258,15 +258,9 @@ wet never touches:
 
 ### Known behaviors
 
-**ToolSearch / deferred tool loading.** When `ANTHROPIC_BASE_URL` points to a non-first-party host (like wet's localhost proxy), Claude Code disables deferred tool loading (ToolSearch). All tool schemas load eagerly instead of on-demand. Functional, but wastes tokens on unused tool schemas.
+**ToolSearch / deferred tool loading.** When `ANTHROPIC_BASE_URL` points to a non-first-party host (like wet's localhost proxy), Claude Code disables deferred tool loading (ToolSearch). All 17 tool schemas load eagerly instead of on-demand. This adds ~5-10K tokens to the base prompt (0.5-1% of the 1M context window). Functional, no features lost, minor token overhead.
 
-Fix: set `ENABLE_TOOL_SEARCH=true` in the environment:
-
-```bash
-ENABLE_TOOL_SEARCH=true wet claude
-```
-
-Verified empirically: bare `claude` shows 17 deferred tools, `wet claude` shows none, `ENABLE_TOOL_SEARCH=true wet claude` restores all 17.
+An `ENABLE_TOOL_SEARCH` env var exists to re-enable deferred loading, but it sends identifiable headers and telemetry to Anthropic's servers. Not recommended.
 
 ---
 
