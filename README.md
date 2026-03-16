@@ -1,5 +1,7 @@
 # Wet Claude
 
+[![Release](https://img.shields.io/github/v/release/buildoak/wet)](https://github.com/buildoak/wet/releases) [![Go](https://img.shields.io/github/go-mod/go-version/buildoak/wet)](go.mod) [![License](https://img.shields.io/github/license/buildoak/wet)](LICENSE) [![Stars](https://img.shields.io/github/stars/buildoak/wet?style=social)](https://github.com/buildoak/wet)
+
 *Wringing Excess Tokens Claude*
 
 **API proxy for Claude Code — teach your Claude to optimize its own context in a meta-transparent way.**
