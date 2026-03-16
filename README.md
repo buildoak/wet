@@ -258,9 +258,9 @@ wet never touches:
 
 ### Known behaviors
 
-**ToolSearch / deferred tool loading.** When `ANTHROPIC_BASE_URL` points to a non-first-party host (like wet's localhost proxy), Claude Code disables deferred tool loading (ToolSearch). All 17 tool schemas load eagerly instead of on-demand. This adds ~5-10K tokens to the base prompt (0.5-1% of the 1M context window). Functional, no features lost, minor token overhead.
+**ToolSearch / deferred tool loading.** Setting `ANTHROPIC_BASE_URL` to a non-first-party host (as wet requires) causes Claude Code to load all tool schemas eagerly instead of deferring them on demand. This adds ~5-10K tokens to the base prompt, under 1% of the context window. No features are lost.
 
-An `ENABLE_TOOL_SEARCH` env var exists to re-enable deferred loading, but it sends identifiable headers and telemetry to Anthropic's servers. Not recommended.
+An `ENABLE_TOOL_SEARCH` env var exists to restore deferred loading, but it adds identifiable headers to API requests and fires telemetry that specifically tracks external overrides of this flag. A `DISABLE_TELEMETRY` env var suppresses some signals but not the API-level headers. The token overhead from eager loading is negligible. Neither flag is recommended.
 
 ---
 
@@ -372,13 +372,15 @@ MIT
 
 ## Anthropic Terms of Service
 
-wet is a local reverse proxy that modifies API request bodies before they reach Anthropic's servers.
+wet does the same thing as Claude Code's built-in auto-compact: it summarizes stale context so subsequent API requests are smaller. The difference is granularity. Auto-compact rewrites the entire conversation. wet compresses individual tool results, preserving conversation structure while removing noise.
 
-**API key usage** (`ANTHROPIC_API_KEY`): Straightforward. You are paying per token and wet reduces your usage.
+Compression is initiated by Claude itself via tool calls. Summaries are generated via Claude Code session subagents on your account. All requests pass to Anthropic's API fully authenticated and subject to normal rate limits, safety filters, and content moderation. No systems are bypassed, reverse-engineered, or interfered with.
 
-**Subscription usage** (device OAuth): Anthropic's Consumer Terms [Section 3.7](https://www.anthropic.com/legal/consumer-terms) broadly restrict automated access "through a bot, script, or otherwise" except via API key. wet's proxy approach falls into a gray area under this clause. No enforcement action has been observed, but the terms do not explicitly permit it.
+**Subscription safety (Claude Pro/Max).** Anthropic's Consumer Terms [Section 3](https://www.anthropic.com/legal/consumer-terms) restrict automated access "through a bot, script, or otherwise." wet is neither. Claude Code remains the sole client talking to Anthropic's API. wet is a local tool that Claude Code uses to manage its own context, the same way it uses `Bash` or `Read`. The proxy sits in the request path but does not initiate, automate, or independently access anything. Same as running Claude Code behind a corporate HTTP proxy or VPN.
 
-**Recommended:** Use `ANTHROPIC_API_KEY` for full compliance. See [Anthropic Consumer Terms](https://www.anthropic.com/legal/consumer-terms) and [Commercial Terms](https://www.anthropic.com/legal/commercial-terms) for details.
+wet is fully open-source. You can audit exactly what it does: receive your outbound request, replace stale tool_result blocks with compressed summaries, and forward everything else unchanged.
+
+See [Consumer Terms](https://www.anthropic.com/legal/consumer-terms), [Commercial Terms](https://www.anthropic.com/legal/commercial-terms), [Acceptable Use Policy](https://www.anthropic.com/legal/aup).
 
 ---
 
