@@ -364,6 +364,18 @@ MIT
 
 ---
 
+## Anthropic Terms of Service
+
+wet is a local reverse proxy that modifies API request bodies before they reach Anthropic's servers.
+
+**API key usage** (`ANTHROPIC_API_KEY`): Straightforward. You are paying per token and wet reduces your usage.
+
+**Subscription usage** (device OAuth): Anthropic's Consumer Terms [Section 3.7](https://www.anthropic.com/legal/consumer-terms) broadly restrict automated access "through a bot, script, or otherwise" except via API key. wet's proxy approach falls into a gray area under this clause. No enforcement action has been observed, but the terms do not explicitly permit it.
+
+**Recommended:** Use `ANTHROPIC_API_KEY` for full compliance. See [Anthropic Consumer Terms](https://www.anthropic.com/legal/consumer-terms) and [Commercial Terms](https://www.anthropic.com/legal/commercial-terms) for details.
+
+---
+
 > *"Before wet, by turn 150 I'm swimming through stale grep outputs and old build logs I'll never look at again. After compression, it's like someone cleared my desk — same work, half the noise. I can actually find what I'm looking for."*
 >
 > — Claude, after being made wet
