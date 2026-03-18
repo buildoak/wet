@@ -99,3 +99,75 @@ func TestSSEInterceptorNoUsage(t *testing.T) {
 		t.Errorf("OutputTokens = %d, want 0", usage.OutputTokens)
 	}
 }
+
+func TestJSONUsageInterceptorExtractsUsage(t *testing.T) {
+	jsonResp := `{"id":"msg_test","type":"message","role":"assistant","content":[{"type":"text","text":"ok"}],"model":"claude-opus-4-6-20250514","stop_reason":"end_turn","usage":{"input_tokens":8,"output_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}`
+
+	body := io.NopCloser(strings.NewReader(jsonResp))
+	interceptor := newJSONUsageInterceptor(body)
+
+	got, err := io.ReadAll(interceptor)
+	if err != nil {
+		t.Fatalf("Read failed: %v", err)
+	}
+	_ = interceptor.Close()
+
+	if string(got) != jsonResp {
+		t.Fatal("JSON response was modified; bytes must pass through unchanged")
+	}
+
+	usage := interceptor.Usage()
+	if usage.InputTokens != 8 {
+		t.Errorf("InputTokens = %d, want 8", usage.InputTokens)
+	}
+	if usage.OutputTokens != 1 {
+		t.Errorf("OutputTokens = %d, want 1", usage.OutputTokens)
+	}
+}
+
+func TestJSONUsageInterceptorWithCacheTokens(t *testing.T) {
+	jsonResp := `{"id":"msg_test","type":"message","role":"assistant","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":3,"output_tokens":150,"cache_creation_input_tokens":33269,"cache_read_input_tokens":20760}}`
+
+	body := io.NopCloser(strings.NewReader(jsonResp))
+	interceptor := newJSONUsageInterceptor(body)
+	_, _ = io.ReadAll(interceptor)
+	_ = interceptor.Close()
+
+	usage := interceptor.Usage()
+	if usage.InputTokens != 3 {
+		t.Errorf("InputTokens = %d, want 3", usage.InputTokens)
+	}
+	if usage.OutputTokens != 150 {
+		t.Errorf("OutputTokens = %d, want 150", usage.OutputTokens)
+	}
+	if usage.CacheCreationInputTokens != 33269 {
+		t.Errorf("CacheCreationInputTokens = %d, want 33269", usage.CacheCreationInputTokens)
+	}
+	if usage.CacheReadInputTokens != 20760 {
+		t.Errorf("CacheReadInputTokens = %d, want 20760", usage.CacheReadInputTokens)
+	}
+}
+
+func TestJSONUsageInterceptorInvalidJSON(t *testing.T) {
+	body := io.NopCloser(strings.NewReader(`not json at all`))
+	interceptor := newJSONUsageInterceptor(body)
+	_, _ = io.ReadAll(interceptor)
+	_ = interceptor.Close()
+
+	usage := interceptor.Usage()
+	if usage.InputTokens != 0 {
+		t.Errorf("InputTokens = %d, want 0", usage.InputTokens)
+	}
+}
+
+func TestJSONUsageInterceptorEmptyBody(t *testing.T) {
+	body := io.NopCloser(strings.NewReader(""))
+	interceptor := newJSONUsageInterceptor(body)
+	_, _ = io.ReadAll(interceptor)
+	_ = interceptor.Close()
+
+	usage := interceptor.Usage()
+	if usage.InputTokens != 0 {
+		t.Errorf("InputTokens = %d, want 0", usage.InputTokens)
+	}
+}

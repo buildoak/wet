@@ -260,6 +260,10 @@ wet never touches:
 
 ### Known behaviors
 
+**Claude Desktop app and IPC routing (CC ≥2.1.77).** When the Claude Desktop app is running, Claude Code routes API calls through the desktop app via Unix socket IPC instead of making direct HTTP requests. This bypasses `ANTHROPIC_BASE_URL` entirely — the wet proxy never sees the traffic, and the statusline goes blank.
+
+**Workaround:** Quit Claude Desktop before starting `wet claude` sessions. The CLI falls back to direct HTTP and the proxy works normally. You only need the desktop app closed at session start — if you open it later mid-session, existing connections continue through the proxy.
+
 **ToolSearch / deferred tool loading.** Setting `ANTHROPIC_BASE_URL` to a non-first-party host (as wet requires) causes Claude Code to load all tool schemas eagerly instead of deferring them on demand. This adds ~5-10K tokens to the base prompt, under 1% of the context window. No features are lost.
 
 An `ENABLE_TOOL_SEARCH` env var exists to restore deferred loading. While functional, it adds identifiable signals to API requests that flag your setup as externally modified. This is unnecessary and could be misread by Anthropic as an attempt to circumvent client protections. The token overhead from eager loading is under 1% of context. Accept the overhead, skip the flag.

@@ -156,3 +156,78 @@ func (s *sseInterceptor) parseMessageDelta(data string) {
 	}
 	s.mu.Unlock()
 }
+
+// jsonUsageInterceptor wraps a non-streaming JSON response body to extract
+// usage data while passing bytes through unchanged. Claude Code ≥2.1.78
+// sends non-streaming pre-flight requests (no "stream" field) that return
+// application/json with a top-level "usage" object.
+type jsonUsageInterceptor struct {
+	original io.ReadCloser
+	buf      []byte
+	pos      int
+	done     bool
+
+	mu    sync.Mutex
+	usage UsageData
+}
+
+func newJSONUsageInterceptor(body io.ReadCloser) *jsonUsageInterceptor {
+	return &jsonUsageInterceptor{original: body}
+}
+
+func (j *jsonUsageInterceptor) Read(p []byte) (int, error) {
+	// Buffer the entire response on first read, then serve from buffer.
+	if !j.done {
+		data, err := io.ReadAll(j.original)
+		j.buf = data
+		j.done = true
+		j.parseUsage(data)
+		if err != nil {
+			return copy(p, j.buf[j.pos:]), err
+		}
+	}
+
+	if j.pos >= len(j.buf) {
+		return 0, io.EOF
+	}
+	n := copy(p, j.buf[j.pos:])
+	j.pos += n
+	if j.pos >= len(j.buf) {
+		return n, io.EOF
+	}
+	return n, nil
+}
+
+func (j *jsonUsageInterceptor) Close() error {
+	return j.original.Close()
+}
+
+func (j *jsonUsageInterceptor) Usage() UsageData {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.usage
+}
+
+// jsonMessageResponse matches the top-level structure of a non-streaming
+// Messages API response. Only the usage field is needed.
+type jsonMessageResponse struct {
+	Usage struct {
+		InputTokens              int `json:"input_tokens"`
+		OutputTokens             int `json:"output_tokens"`
+		CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+		CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+	} `json:"usage"`
+}
+
+func (j *jsonUsageInterceptor) parseUsage(data []byte) {
+	var resp jsonMessageResponse
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return
+	}
+	j.mu.Lock()
+	j.usage.InputTokens = resp.Usage.InputTokens
+	j.usage.OutputTokens = resp.Usage.OutputTokens
+	j.usage.CacheCreationInputTokens = resp.Usage.CacheCreationInputTokens
+	j.usage.CacheReadInputTokens = resp.Usage.CacheReadInputTokens
+	j.mu.Unlock()
+}
