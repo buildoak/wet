@@ -11,21 +11,18 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/buildoak/wet/config"
 )
 
-// tokenMultiplier is the calibrated factor: naive char/4 underestimates by
-// ~2.3x for mixed code/JSON content.
-const tokenMultiplier = 2.3
-
-// contextWindow is Claude's context window size in tokens.
-const contextWindow = 200_000
-
-// estimateTokens returns an estimated token count from character length.
-func estimateTokens(text string) int {
-	if len(text) == 0 {
+// charsToTokensFallback converts a character count to an estimated token count.
+// Used only when no API usage data is available (pure offline, no assistant messages).
+// Uses the standard ~4 chars/token ratio without any multiplier.
+func charsToTokensFallback(chars int) int {
+	if chars <= 0 {
 		return 0
 	}
-	return int(float64(len(text)) / 4.0 * tokenMultiplier)
+	return int(math.Ceil(float64(chars) / 4.0))
 }
 
 // fmtK formats a token count with "k" suffix for thousands.
@@ -61,12 +58,17 @@ func healthStatus(pctFull float64) string {
 // categoryStats tracks token count and block count for a category.
 type categoryStats struct {
 	tokens int
+	chars  int // raw character count for proportional scaling
 	count  int
 }
 
 // profileResult holds the parsed session profile.
 type profileResult struct {
 	totalTokens      int
+	contextWindow    int
+	apiTotalTokens   int // ground truth from API usage (0 if unavailable)
+	model            string
+	tokenSource      string // "api" or "estimated"
 	userText         categoryStats
 	assistantText    categoryStats
 	toolUse          categoryStats
@@ -103,6 +105,15 @@ type jsonlMessage struct {
 type messageEnvelope struct {
 	Role    string          `json:"role"`
 	Content json.RawMessage `json:"content"`
+	Model   string          `json:"model"`
+	Usage   json.RawMessage `json:"usage"`
+}
+
+// apiUsage holds the usage block from an assistant message.
+type apiUsage struct {
+	InputTokens              int `json:"input_tokens"`
+	CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+	CacheReadInputTokens     int `json:"cache_read_input_tokens"`
 }
 
 // contentBlock represents a content block in a message.
@@ -166,9 +177,42 @@ func extractTextFromContent(raw json.RawMessage) string {
 	return ""
 }
 
+// fetchWetContextWindow queries the wet proxy /_wet/status endpoint and returns
+// the context_window value. Returns 0 on any error.
+func fetchWetContextWindow(port int) int {
+	url := fmt.Sprintf("http://127.0.0.1:%d/_wet/status", port)
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return 0
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0
+	}
+
+	var status map[string]any
+	if err := json.Unmarshal(body, &status); err != nil {
+		return 0
+	}
+
+	if v, ok := status["context_window"]; ok {
+		switch n := v.(type) {
+		case float64:
+			return int(n)
+		case int:
+			return n
+		}
+	}
+	return 0
+}
+
 // RunSessionProfile reads a Claude Code session JSONL file and produces a
 // context composition table. Optionally queries /_wet/inspect for tool result
-// breakdown.
+// breakdown and /_wet/status for context window size.
 func RunSessionProfile(jsonlPath string, port int) error {
 	f, err := os.Open(jsonlPath)
 	if err != nil {
@@ -177,12 +221,9 @@ func RunSessionProfile(jsonlPath string, port int) error {
 	defer f.Close()
 
 	// Two-pass approach:
-	// Pass 1: build tool_use_id -> tool_name map
-	// Pass 2: compute token counts
-	//
-	// We read into memory since we need two passes and the line-by-line
-	// re-read would require re-opening. Store raw lines to keep memory
-	// bounded per-line.
+	// Pass 1: build tool_use_id -> tool_name map + extract model/usage from assistant messages
+	// Pass 2: compute character counts per category
+	// Then: scale character counts to token counts using API ground truth (or fallback)
 
 	type parsedLine struct {
 		msgType string
@@ -192,6 +233,10 @@ func RunSessionProfile(jsonlPath string, port int) error {
 
 	var lines []parsedLine
 	toolUseMap := make(map[string]string) // tool_use_id -> tool_name
+
+	// Track the last assistant message's model and usage for ground truth
+	var lastModel string
+	var lastUsage *apiUsage
 
 	scanner := bufio.NewScanner(f)
 	// Bump buffer to 4MB for long JSONL lines (tool results can be huge).
@@ -225,8 +270,24 @@ func RunSessionProfile(jsonlPath string, port int) error {
 		}
 		lines = append(lines, pl)
 
-		// Pass 1: extract tool_use_id -> name mappings from assistant messages
+		// Pass 1: extract tool_use_id -> name mappings and model/usage from assistant messages
 		if msg.Type == "assistant" {
+			// Extract model name
+			if env.Model != "" {
+				lastModel = env.Model
+			}
+
+			// Extract usage data
+			if len(env.Usage) > 0 {
+				var usage apiUsage
+				if err := json.Unmarshal(env.Usage, &usage); err == nil {
+					total := usage.InputTokens + usage.CacheCreationInputTokens + usage.CacheReadInputTokens
+					if total > 0 {
+						lastUsage = &usage
+					}
+				}
+			}
+
 			var blocks []contentBlock
 			if err := json.Unmarshal(env.Content, &blocks); err == nil {
 				for _, b := range blocks {
@@ -245,9 +306,10 @@ func RunSessionProfile(jsonlPath string, port int) error {
 		return fmt.Errorf("error reading JSONL: %w", err)
 	}
 
-	// Pass 2: compute token counts
+	// Pass 2: compute character counts per category
 	result := &profileResult{
 		toolResultByName: make(map[string]*categoryStats),
+		model:            lastModel,
 	}
 
 	for _, pl := range lines {
@@ -259,8 +321,50 @@ func RunSessionProfile(jsonlPath string, port int) error {
 		}
 	}
 
-	result.totalTokens = result.userText.tokens + result.assistantText.tokens +
-		result.toolUse.tokens + result.toolResult.tokens
+	// Compute total characters across all categories
+	totalChars := result.userText.chars + result.assistantText.chars +
+		result.toolUse.chars + result.toolResult.chars
+
+	// Determine API ground truth token count
+	if lastUsage != nil {
+		result.apiTotalTokens = lastUsage.InputTokens +
+			lastUsage.CacheCreationInputTokens +
+			lastUsage.CacheReadInputTokens
+	}
+
+	// Scale character counts to token counts
+	if result.apiTotalTokens > 0 && totalChars > 0 {
+		// Proportional scaling: each category's tokens = (category_chars / total_chars) * api_total
+		result.tokenSource = "api"
+		result.userText.tokens = proportionalTokens(result.userText.chars, totalChars, result.apiTotalTokens)
+		result.assistantText.tokens = proportionalTokens(result.assistantText.chars, totalChars, result.apiTotalTokens)
+		result.toolUse.tokens = proportionalTokens(result.toolUse.chars, totalChars, result.apiTotalTokens)
+		result.toolResult.tokens = proportionalTokens(result.toolResult.chars, totalChars, result.apiTotalTokens)
+
+		// Scale per-tool-name breakdown
+		for _, stats := range result.toolResultByName {
+			stats.tokens = proportionalTokens(stats.chars, totalChars, result.apiTotalTokens)
+		}
+
+		result.totalTokens = result.apiTotalTokens
+	} else {
+		// Fallback: standard chars/4 estimation (no multiplier)
+		result.tokenSource = "estimated"
+		result.userText.tokens = charsToTokensFallback(result.userText.chars)
+		result.assistantText.tokens = charsToTokensFallback(result.assistantText.chars)
+		result.toolUse.tokens = charsToTokensFallback(result.toolUse.chars)
+		result.toolResult.tokens = charsToTokensFallback(result.toolResult.chars)
+
+		for _, stats := range result.toolResultByName {
+			stats.tokens = charsToTokensFallback(stats.chars)
+		}
+
+		result.totalTokens = result.userText.tokens + result.assistantText.tokens +
+			result.toolUse.tokens + result.toolResult.tokens
+	}
+
+	// Determine context window size
+	result.contextWindow = resolveContextWindow(port, lastModel)
 
 	// Optional: wet inspect for stale/fresh tracking
 	var wetSummary *wetInspectSummary
@@ -273,7 +377,37 @@ func RunSessionProfile(jsonlPath string, port int) error {
 	return nil
 }
 
+// proportionalTokens computes tokens for a category using proportional scaling.
+// Formula: category_tokens = (category_chars / total_chars) * api_total_tokens
+func proportionalTokens(categoryChars, totalChars, apiTotal int) int {
+	if totalChars == 0 || apiTotal == 0 {
+		return 0
+	}
+	return int(math.Round(float64(categoryChars) / float64(totalChars) * float64(apiTotal)))
+}
+
+// resolveContextWindow determines the context window size.
+// Priority: 1) wet proxy status endpoint (when port specified), 2) model lookup, 3) 200k fallback.
+func resolveContextWindow(port int, model string) int {
+	// Try wet proxy first
+	if port > 0 {
+		if cw := fetchWetContextWindow(port); cw > 0 {
+			return cw
+		}
+	}
+
+	// Offline: look up model in built-in defaults
+	if model != "" {
+		cfg := config.Default()
+		return cfg.ModelContextWindow(model)
+	}
+
+	// Ultimate fallback
+	return 200_000
+}
+
 // processUserContent handles user message content (string or array of blocks).
+// It accumulates character counts (not token counts) for later proportional scaling.
 func processUserContent(raw json.RawMessage, result *profileResult, toolUseMap map[string]string) {
 	if len(raw) == 0 {
 		return
@@ -282,8 +416,7 @@ func processUserContent(raw json.RawMessage, result *profileResult, toolUseMap m
 	// Try as plain string
 	var s string
 	if err := json.Unmarshal(raw, &s); err == nil {
-		tokens := estimateTokens(s)
-		result.userText.tokens += tokens
+		result.userText.chars += len(s)
 		result.userText.count++
 		return
 	}
@@ -304,19 +437,18 @@ func processUserContent(raw json.RawMessage, result *profileResult, toolUseMap m
 				}
 			}
 			text := extractTextFromContent(b.Content)
-			tokens := estimateTokens(text)
-			result.toolResult.tokens += tokens
+			chars := len(text)
+			result.toolResult.chars += chars
 			result.toolResult.count++
 
 			if _, ok := result.toolResultByName[toolName]; !ok {
 				result.toolResultByName[toolName] = &categoryStats{}
 			}
-			result.toolResultByName[toolName].tokens += tokens
+			result.toolResultByName[toolName].chars += chars
 			result.toolResultByName[toolName].count++
 
 		case "text":
-			tokens := estimateTokens(b.Text)
-			result.userText.tokens += tokens
+			result.userText.chars += len(b.Text)
 			result.userText.count++
 
 		default:
@@ -324,8 +456,7 @@ func processUserContent(raw json.RawMessage, result *profileResult, toolUseMap m
 			var str string
 			raw, _ := json.Marshal(b)
 			if json.Unmarshal(raw, &str) == nil {
-				tokens := estimateTokens(str)
-				result.userText.tokens += tokens
+				result.userText.chars += len(str)
 				result.userText.count++
 			}
 		}
@@ -333,6 +464,7 @@ func processUserContent(raw json.RawMessage, result *profileResult, toolUseMap m
 }
 
 // processAssistantContent handles assistant message content.
+// It accumulates character counts (not token counts) for later proportional scaling.
 func processAssistantContent(raw json.RawMessage, result *profileResult) {
 	if len(raw) == 0 {
 		return
@@ -341,8 +473,7 @@ func processAssistantContent(raw json.RawMessage, result *profileResult) {
 	// Try as plain string
 	var s string
 	if err := json.Unmarshal(raw, &s); err == nil {
-		tokens := estimateTokens(s)
-		result.assistantText.tokens += tokens
+		result.assistantText.chars += len(s)
 		result.assistantText.count++
 		return
 	}
@@ -356,15 +487,13 @@ func processAssistantContent(raw json.RawMessage, result *profileResult) {
 	for _, b := range blocks {
 		switch b.Type {
 		case "text":
-			tokens := estimateTokens(b.Text)
-			result.assistantText.tokens += tokens
+			result.assistantText.chars += len(b.Text)
 			result.assistantText.count++
 
 		case "tool_use":
 			// Serialize the input to estimate its size
 			inputRaw, _ := json.Marshal(b.Input)
-			tokens := estimateTokens(string(inputRaw))
-			result.toolUse.tokens += tokens
+			result.toolUse.chars += len(inputRaw)
 			result.toolUse.count++
 
 		case "thinking":
@@ -426,11 +555,17 @@ func fetchWetInspect(port int) *wetInspectSummary {
 // renderProfile prints the composition table to stdout.
 func renderProfile(result *profileResult, wetSummary *wetInspectSummary) {
 	total := result.totalTokens
-	pctFull := float64(total) / float64(contextWindow) * 100
+	ctxWindow := result.contextWindow
+	pctFull := float64(total) / float64(ctxWindow) * 100
 	health := healthStatus(pctFull)
 
-	header := fmt.Sprintf("CONTEXT COMPOSITION — ~%s / %s (~%d%% full) [estimated]",
-		fmtK(total), fmtK(contextWindow), int(pctFull))
+	sourceLabel := "from API"
+	if result.tokenSource == "estimated" {
+		sourceLabel = "estimated"
+	}
+
+	header := fmt.Sprintf("CONTEXT COMPOSITION — ~%s / %s (~%d%% full) [%s]",
+		fmtK(total), fmtK(ctxWindow), int(pctFull), sourceLabel)
 	fmt.Println(header)
 	fmt.Println(strings.Repeat("═", 51))
 

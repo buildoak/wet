@@ -127,15 +127,21 @@ func NewWithLogOutput(cfg *config.Config, logOutput io.Writer) *Server {
 			if path == "" {
 				path = resp.Request.URL.Path
 			}
+			ct := resp.Header.Get("Content-Type")
 			s.logf("[wet] %s %s -> %d (%s)\n", method, path, resp.StatusCode, latency.Round(time.Millisecond))
 
-			if strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream") {
-				reqID, _ := resp.Request.Context().Value(sseReqIDKey).(string)
+			reqID, _ := resp.Request.Context().Value(sseReqIDKey).(string)
+			if strings.Contains(ct, "text/event-stream") {
 				if reqID != "" {
 					interceptor := newSSEInterceptor(resp.Body)
 					resp.Body = interceptor
 					s.sseInterceptors.Store(reqID, interceptor)
 				}
+			} else if strings.Contains(ct, "application/json") && reqID != "" {
+				// Non-streaming response: wrap body to extract usage from JSON.
+				interceptor := newJSONUsageInterceptor(resp.Body)
+				resp.Body = interceptor
+				s.sseInterceptors.Store(reqID, interceptor)
 			}
 			return nil
 		},
@@ -223,11 +229,12 @@ func (s *Server) handleMessagesWithCompression(w http.ResponseWriter, r *http.Re
 		if !ok {
 			return usage
 		}
-		interceptor, ok := val.(*sseInterceptor)
-		if !ok {
-			return usage
+		switch interceptor := val.(type) {
+		case *sseInterceptor:
+			usage = interceptor.Usage()
+		case *jsonUsageInterceptor:
+			usage = interceptor.Usage()
 		}
-		usage = interceptor.Usage()
 		if usage.InputTokens > 0 || usage.OutputTokens > 0 || usage.CacheCreationInputTokens > 0 || usage.CacheReadInputTokens > 0 {
 			s.logf("[wet] API usage: input=%d output=%d cache_create=%d cache_read=%d\n",
 				usage.InputTokens, usage.OutputTokens,

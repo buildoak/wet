@@ -17,6 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `wet claude` and `wet serve` now share the same proxy startup path
 
+## [0.1.5] - 2026-03-18
+
+### Fixed
+
+- **Proxy now extracts token usage from non-streaming (JSON) API responses.** Claude Code ≥2.1.78 sends a non-streaming pre-flight request before the streaming request; the proxy previously only parsed SSE streams, so usage was zero for the pre-flight. Both SSE and JSON responses are now intercepted.
+- **Statusline no longer goes blank when Claude Desktop app is running.** CC ≥2.1.77 routes API traffic through the desktop app via IPC, bypassing `ANTHROPIC_BASE_URL`. Quit the desktop app before starting `wet claude` sessions so the proxy can intercept traffic. (See README for details.)
+- `session profile` context window now uses model-specific lookup (1M for opus/sonnet-4, 200k for haiku) instead of hardcoded 200k; queries `/_wet/status` when `--port` is specified
+- `session profile` token counts now use API ground truth (`input_tokens + cache_creation_input_tokens + cache_read_input_tokens`) from the last assistant message instead of the `chars/4 * 2.3` heuristic that overcounted by ~60%; per-category breakdown uses proportional character scaling against the API total
+
 ## [0.1.4] - 2026-03-16
 
 ### Added
@@ -133,7 +142,8 @@ Initial public release.
 - 9.3MB arm64 binary, zero runtime dependencies
 - 125 tests passing across 8 packages
 
-[Unreleased]: https://github.com/buildoak/wet/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/buildoak/wet/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/buildoak/wet/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/buildoak/wet/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/buildoak/wet/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/buildoak/wet/compare/v0.1.1...v0.1.2
