@@ -1,0 +1,8 @@
+.git
+.github
+assets
+logs
+tests
+README.md
+CHANGELOG.md
+CONTRIBUTING.md

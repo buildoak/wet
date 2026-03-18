@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/buildoak/wet/config"
-	"github.com/buildoak/wet/proxy"
 )
 
 // ChildExitError wraps a non-zero child process exit code.
@@ -52,29 +51,15 @@ func RunShim(args []string) error {
 		sessionUUID = generateUUID()
 	}
 
-	srv := proxy.NewWithLogOutput(cfg, logFile)
-	srv.SetSessionUUID(sessionUUID)
-	if resumeUUID != "" {
-		srv.RestoreResumeStats()
+	srv, _, err := startProxyServer(cfg, logFile, sessionUUID, resumeUUID != "")
+	if err != nil {
+		return err
 	}
-	serverErrCh := make(chan error, 1)
-	go func() {
-		err := srv.ListenAndServe()
-		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			serverErrCh <- err
-		}
-	}()
 
 	defer func() {
 		srv.Shutdown()
-		stats := srv.StatusSnapshot()
-		fmt.Fprintf(logFile, "[wet] session stats: requests=%d compressed=%d tokens_saved=%d\n",
-			stats.Requests, stats.Compressed, stats.TokensSaved)
+		logProxySessionStats(logFile, srv)
 	}()
-
-	if err := waitForProxyReady(port, 2*time.Second, serverErrCh); err != nil {
-		return err
-	}
 
 	// Note: WriteInitialStatsFile (called in proxy.New) already writes a
 	// properly hydrated stats file. No need to clear stale data here --

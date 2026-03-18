@@ -18,6 +18,7 @@ var (
 
 const usageText = `Usage:
   wet claude [args...]     # session wrapper (primary)
+  wet serve [options]      # standalone proxy server (Docker/IDE friendly)
   wet status [--json] [--port PORT|PORT]  # live proxy status
   wet ps [--all]           # list all running wet proxies
   wet data status          # offline session stats from ~/.wet/sessions
@@ -65,6 +66,8 @@ func main() {
 		return
 	case "claude":
 		err = cli.RunShim(args[1:])
+	case "serve":
+		err = cli.RunServe(args[1:])
 	case "status":
 		jsonOutput := false
 		remaining := extractPort(args[1:])
