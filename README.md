@@ -45,6 +45,7 @@ The **Go proxy** is the toolbox. It sits between Claude Code and the API, interc
 wet claude [args...]                    # start Claude Code through the proxy
 wet claude --resume <session-id>        # resume a previous session through wet
 wet claude --dangerously-skip-permissions  # autonomous mode through wet
+wet serve --host 0.0.0.0 --mode auto   # standalone proxy for Docker / IDE extension
 
 # Observe
 wet ps [--all]                          # list all active wet sessions
@@ -138,7 +139,37 @@ wet install-statusline
 wet claude --dangerously-skip-permissions
 ```
 
-The **skill is not optional**. Without it, wet is just a proxy that counts tokens. With it, Claude knows how to profile its own context, propose compression plans, and execute them. The proxy is the toolbox - the skill is the manual that makes Claude a self-optimizing agent.
+Docker / IDE Extension path:
+
+```bash
+# Build the standalone proxy image
+docker build -t wet-proxy .
+
+# Run it on localhost:8100 (auto mode shown here; passthrough is the default)
+docker run --rm \
+  -p 8100:8100 \
+  -e WET_MODE=auto \
+  -v wet-data:/root/.wet \
+  wet-proxy
+```
+
+Then point Claude Code's shared settings at the published port:
+
+```json
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8100"
+  }
+}
+```
+
+This mode is best when you want a drop-in proxy beside Claude Code IDE Extension without launching Claude through `wet claude`. If you also want to drive `wet status`, `wet inspect`, or `wet compress` from the host, run the CLI locally and pass `--port 8100`.
+
+Use a specific image tag like `wet-proxy` rather than plain `wet`. `wet:latest` is a generic local tag and may already belong to an unrelated image on your machine.
+
+**Security note:** The proxy exposes unauthenticated `/_wet/*` control endpoints. When binding to `0.0.0.0`, ensure the port is not publicly reachable — place it behind a firewall, restrict it to a private network, or add network-level access control (e.g., a reverse proxy with auth).
+
+The **skill is not optional for Tier 2 / agent-driven workflows**. Without it, wet still works as a proxy and can run deterministic auto compression, but Claude will not know how to profile its own context, propose compression plans, and execute semantic rewrites. The proxy is the toolbox - the skill is the manual that makes Claude a self-optimizing agent.
 
 The **statusline** is customizable — ask Claude to tweak it to your preferences. After install, it shows context health in real time:
 
@@ -268,6 +299,8 @@ wet never touches:
 
 An `ENABLE_TOOL_SEARCH` env var exists to restore deferred loading. While functional, it adds identifiable signals to API requests that flag your setup as externally modified. This is unnecessary and could be misread by Anthropic as an attempt to circumvent client protections. The token overhead from eager loading is under 1% of context. Accept the overhead, skip the flag.
 
+**Standalone `wet serve` scope.** The standalone proxy is a good fit for Docker and IDE extension workflows, but its live inspect/compress state is still scoped to one active main session per proxy process. If you need multiple concurrent IDE conversations with independent `wet inspect` / `wet compress` state, run multiple proxies (for example one container per conversation/port).
+
 ---
 
 ## Configuration
@@ -314,6 +347,7 @@ wet rules set min_savings_pct 50        # lower the savings threshold
 | Command | What it does |
 |---|---|
 | `wet claude [args...]` | Start Claude Code through the wet proxy |
+| `wet serve [options]` | Run the wet proxy as a standalone server |
 | `wet ps [--all]` | List all active wet sessions |
 | `wet install-statusline` | Add wet statusline to Claude Code prompt |
 | `wet uninstall-statusline` | Remove wet statusline |

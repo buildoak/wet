@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Standalone `wet serve` command for running the proxy without launching `claude`
+- Dockerfile and `.dockerignore` for containerized proxy deployments
+- README guidance for Claude Code IDE Extension via `ANTHROPIC_BASE_URL=http://127.0.0.1:8100`
+
+### Changed
+
+- `wet claude` and `wet serve` now share the same proxy startup path
+
 ## [0.1.5] - 2026-03-18
 
 ### Fixed
