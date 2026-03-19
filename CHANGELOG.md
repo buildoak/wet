@@ -7,11 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-03-19
+
 ### Added
 
-- Standalone `wet serve` command for running the proxy without launching `claude`
+- Standalone `wet serve` command for running the proxy without launching `claude` (PR #6)
 - Dockerfile and `.dockerignore` for containerized proxy deployments
 - README guidance for Claude Code IDE Extension via `ANTHROPIC_BASE_URL=http://127.0.0.1:8100`
+- 4 lifecycle tests for `wet serve`: startup readiness, signal shutdown, resume validation, port conflict detection
+- Single-session constraint note and security warning for `0.0.0.0` binding in docs
+- `cc-compatibility.md` reference doc embedded into skill FS
 
 ### Changed
 
@@ -142,7 +147,8 @@ Initial public release.
 - 9.3MB arm64 binary, zero runtime dependencies
 - 125 tests passing across 8 packages
 
-[Unreleased]: https://github.com/buildoak/wet/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/buildoak/wet/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/buildoak/wet/compare/v0.1.5...v0.2.0
 [0.1.5]: https://github.com/buildoak/wet/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/buildoak/wet/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/buildoak/wet/compare/v0.1.2...v0.1.3
