@@ -28,6 +28,10 @@ Environment:
   WET_SESSION_UUID   Stable session ID for persistence/resume
   WET_RESUME         Restore prior stats for WET_SESSION_UUID (1/true/yes)
 
+Note:
+  One proxy process tracks one main session. For multiple concurrent conversations
+  (e.g., from separate IDE windows or a bot), run separate proxy instances on separate ports.
+
 Examples:
   wet serve --host 0.0.0.0 --mode auto
   WET_HOST=0.0.0.0 WET_MODE=auto wet serve

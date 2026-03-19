@@ -167,6 +167,8 @@ This mode is best when you want a drop-in proxy beside Claude Code IDE Extension
 
 Use a specific image tag like `wet-proxy` rather than plain `wet`. `wet:latest` is a generic local tag and may already belong to an unrelated image on your machine.
 
+**Security note:** The proxy exposes unauthenticated `/_wet/*` control endpoints. When binding to `0.0.0.0`, ensure the port is not publicly reachable — place it behind a firewall, restrict it to a private network, or add network-level access control (e.g., a reverse proxy with auth).
+
 The **skill is not optional for Tier 2 / agent-driven workflows**. Without it, wet still works as a proxy and can run deterministic auto compression, but Claude will not know how to profile its own context, propose compression plans, and execute semantic rewrites. The proxy is the toolbox - the skill is the manual that makes Claude a self-optimizing agent.
 
 The **statusline** is customizable — ask Claude to tweak it to your preferences. After install, it shows context health in real time:
