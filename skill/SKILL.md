@@ -16,7 +16,7 @@ references:
 
 # wet-compress
 
-Compress stale tool results through the `wet` CLI. Five phases, strict order. Heavy work runs in subagents — the main session stays lean.
+Compress stale tool results through the `wet` CLI. Seven phases (0 through 5, including 3.5), strict order. Phase 0 verifies session identity — always first. Heavy work runs in subagents — the main session stays lean.
 
 **This skill IS Tier 2.** The binary handles Tier 1 (mechanical, regex, <5ms). The skill orchestrates LLM rewrites for agent returns, search results, and file reads — the high-value compressions that Tier 1 can't touch.
 
@@ -24,7 +24,35 @@ See `references/architecture.md` for how wet works. See `references/heuristics.m
 
 ---
 
+## Phase 0 — Session Identity (main session, mandatory)
+
+Before trusting ANY wet output, verify wet is proxying THIS session.
+
+```bash
+wet session salt
+```
+
+This prints a unique token (e.g. `WET_SALT_b7b8c7ab13f4245e`). The token is now embedded in this session's transcript.
+
+Then find which session owns that salt:
+
+```bash
+wet session find WET_SALT_<the token you just got>
+```
+
+Returns `{"session_id": "<uuid>", "jsonl_path": "<path>"}`.
+
+**Gate:** If `session_id` does NOT match the current session, wet is proxying a different session. Tell the user: "wet is connected to session `<id>`, not this one. Stats and compression will target the wrong session." **STOP.**
+
+If salt find returns NOT_FOUND, the salt hasn't flushed to JSONL yet — this is expected on the same turn. Proceed, but note the session could not be verified.
+
+**Why this exists:** Multiple Claude sessions can run simultaneously. Without salt verification, `wet status` and `wet inspect` silently report on whichever session the proxy happens to be routing — which may not be this one. This caused a misdiagnosis (273k reported for a 92k session) on 2026-03-19.
+
+---
+
 ## Phase 1 — Health Check (main session, 1 command)
+
+**Prerequisite:** Phase 0 session identity verified.
 
 ```bash
 wet status --json
@@ -43,9 +71,11 @@ Report: mode, fill%, request_count, tokens_saved.
 
 ## Phase 2 — Profile (Sonnet 4.6 subagent)
 
+**Prerequisite:** Phase 0 session identity verified.
+
 Spawn a subagent with this EXACT prompt:
 
-> You are a context profiler for the wet compression proxy.
+> You are a context profiler for the wet compression proxy. Session identity has already been verified in Phase 0 — do NOT re-run `wet session salt` or `wet session find`.
 >
 > **Task:**
 > 1. Run `wet status --json` — this is the API ground truth for context fill. Extract `latest_total_input_tokens` and `context_window`. Compute `fill_pct = latest_total_input_tokens * 100 / context_window`.
@@ -173,7 +203,7 @@ If Phase 2 profiling shows **15+ LLM-rewrite items** (AGENT_RETURN + SEARCH + op
 
 Spawn a subagent (fill in `«MECHANICAL_IDS»`, `«REWRITE_IDS»` (agent + search), `«SUMMARIZE_FILE_IDS»`, `«DELETE_FILE_IDS»`):
 
-> You are a context compressor for the wet proxy. All commands use the `wet` CLI.
+> You are a context compressor for the wet proxy. All commands use the `wet` CLI. Session identity has already been verified in Phase 0 — do NOT re-run `wet session salt` or `wet session find`.
 >
 > **Step 1 — Mechanical:** Compress Bash IDs only, no replacement text. Tier 1 handles them.
 > ```bash
@@ -235,6 +265,21 @@ Report: new fill%, tokens_saved, items_compressed. Compare to Phase 1. Prefer `s
 
 ---
 
+## Gotchas
+
+| Don't | Do instead |
+|-------|------------|
+| Run Phase 4 without Phase 3 approval | Always wait for explicit user approval before compressing |
+| Sum inspect token counts to calculate fill% | Use `wet status --json` for fill% (API ground truth) |
+| Send already-compressed items (content_preview has `[compressed`) for rewrite | Check ALREADY_COMPRESSED first — classify as PROTECTED immediately |
+| Send Grep/Glob results through Tier 1 mechanical compression | Always use LLM rewrite for search results — head/tail truncation loses middle matches |
+| Compress items under 250 tokens via Tier 1 | Classify as PROTECTED — compressed + tombstone wrapper >= original size |
+| Fire parallel subagents for LLM-rewrite batches | Run batches sequentially — parallel subagents compete for the same inspect/compress endpoints |
+| Write verbose summaries that are 20%+ of original size | Target 80%+ compression — extract key facts only, drop reasoning chains and code blocks |
+| Trust `wet status` or `wet inspect` without verifying session identity | Always run Phase 0 (`wet session salt` → `wet session find`) first — wet reports on whichever session the proxy routes, not necessarily the current one |
+
+---
+
 ## Rules — DO NOT violate
 
 1. **NEVER** compress boot reads (SOUL/IDENTITY/USER/MEMORY).
@@ -248,3 +293,4 @@ Report: new fill%, tokens_saved, items_compressed. Compare to Phase 1. Prefer `s
 9. **NEVER** modify rules or pause/resume state. Read + compress only.
 10. **NEVER** summarize a deleted file read. Delete = tombstone only.
 11. **NEVER** send Grep/Glob results through Tier 1 mechanical compression — head/tail truncation loses matches from the middle. Always LLM rewrite.
+12. **NEVER** skip Phase 0 session identity verification. Multi-session environments silently route wet to the wrong session.
