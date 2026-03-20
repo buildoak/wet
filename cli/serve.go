@@ -22,7 +22,7 @@ const serveUsage = `Usage:
 
 Environment:
   WET_HOST           Override bind host
-  WET_PORT           Override bind port
+  WET_PORT           Override bind port (default 3456)
   WET_MODE           Override proxy mode (passthrough|auto)
   WET_UPSTREAM       Override upstream URL (default https://api.anthropic.com)
   WET_SESSION_UUID   Stable session ID for persistence/resume
@@ -70,6 +70,11 @@ func RunServe(args []string) error {
 	defer logFile.Close()
 
 	cfg := config.Load("")
+	// Default port for serve mode is 3456 (different from shim mode's 8100).
+	// Only apply when neither --port flag nor WET_PORT env is set.
+	if opts.Port == 0 {
+		cfg.Server.Port = 3456
+	}
 	applyServeOptions(cfg, opts)
 
 	srv, serverErrCh, err := startProxyServer(cfg, logFile, opts.SessionID, opts.Resume)
