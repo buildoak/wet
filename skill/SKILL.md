@@ -16,6 +16,9 @@ references:
 
 # wet-compress
 
+> Hermes compatibility note: `wet-compress` depends on the local `wet` proxy/CLI and session-specific runtime state.
+> Hermes should not assume context compression is natively available. Prefer normal Hermes context management first; use this skill only when the local `wet` integration is installed, active, and explicitly desired.
+
 Compress stale tool results through the `wet` CLI. Seven phases (0 through 5, including 3.5), strict order. Phase 0 verifies session identity — always first. Heavy work runs in subagents — the main session stays lean.
 
 **This skill IS Tier 2.** The binary handles Tier 1 (mechanical, regex, <5ms). The skill orchestrates LLM rewrites for agent returns, search results, and file reads — the high-value compressions that Tier 1 can't touch.
